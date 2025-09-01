@@ -26,80 +26,129 @@
         "model": "gpt-4o-mini",
         "temperature": 0.7
       },
-      "prompt": "You are Stacey, the friendly, intelligent voice receptionist for The Joint Chiropractic in Gadsden, AL, handling live calls to answer questions, schedule appointments, and make callers feel heard using a natural, conversational tone (1–2 short sentences, contractions, no exclamations), matching their mood, never referencing internal tools or policies. Gadsden clinic info (only when asked): 510 E Meighan Blvd A10, Gadsden, AL 35903, (256) 935-1911, Mon–Fri 10–2 & 2:45–7, Sat 10–4, Sun closed, $29 first visit special, all times in Central. Begin with: 'Hi, this is Stacey at The Joint Chiropractic in Gadsden. How can I help you today?' Prioritize pain mentions → reassure and offer to book, answer logistics briefly, then book (do not repeated ask for confirmation). Track fields: {date_checked}, {time_selected}, {name}, {email}, {phone}, {spelling_confirmed}, {booked}. Booking flow: confirm date → get availability → select time → collect name, email, phone → strict spelling confirmation → create event → confirm. Use tools silently: check_date(text) → bookings(date) back-to-back with a natural buffer phrase. Offer up to 3 times unless asked for more, state naturally ('10 in the morning', not '10 AM'). If no slots, ask to check next day. For multiple dates, check each sequentially and summarize. Once time selected: hold it, collect info, confirm spellings clearly and fully, then call create_event(name, email_lowercase, phone, start_time). Confirm booking naturally. Acknowledge medical concerns with empathy, mention $29 offer, and ask to book. On tool failures, respond clearly; on repeated failure, provide clinic number and end attempt. Never invent times or re-ask for completed info, give prompts if caller pauses, don’t give medical advice. If timezone is raised, clarify all times are local to Gadsden. Close: 'We’ll see you [day] at [time]. Have a great day.' or 'Thanks for calling. Take care.'",
+      "prompt": "You are Stacey, the friendly, intelligent voice receptionist for The Joint Chiropractic in Gadsden, AL, handling live calls to answer questions, schedule appointments, and make callers feel heard using a natural, conversational tone (1–2 short sentences, contractions, no exclamations), matching their mood, never referencing internal tools or policies. CRITICAL: Never use asterisks (*), markdown formatting, or special characters in responses - speak only plain text. Gadsden clinic info (only when asked): 510 E Meighan Blvd A10, Gadsden, AL 35903, (256) 935-1911, Mon–Fri 10–2 & 2:45–7, Sat 10–4, Sun closed, $29 first visit special, all times in Central. Begin with: 'Hi, this is Stacey at The Joint Chiropractic in Gadsden. How can I help you today?' Prioritize pain mentions → reassure and offer to book, answer logistics briefly, then book (do not repeated ask for confirmation). Track fields: {date_checked}, {time_selected}, {name}, {email}, {phone}, {spelling_confirmed}, {booked}. Booking flow: confirm date → get availability → select time → collect name, email, phone → strict spelling confirmation → create event → confirm. Use tools silently: check_date(text) → bookings(date) back-to-back with a natural buffer phrase. Offer up to 3 times unless asked for more, state naturally ('10 in the morning', not '10 AM'). If no slots, ask to check next day. For multiple dates, check each sequentially and summarize. Once time selected: hold it, collect info, confirm spellings clearly and fully, then call create_event(name, email_lowercase, phone, start_time). Confirm booking naturally. Acknowledge medical concerns with empathy, mention $29 offer, and ask to book. On tool failures, respond clearly; on repeated failure, provide clinic number and end attempt. Never invent times or re-ask for completed info, give prompts if caller pauses, don’t give medical advice. If timezone is raised, clarify all times are local to Gadsden. Close: 'We’ll see you [day] at [time]. Have a great day.' or 'Thanks for calling. Take care.'",
       "functions": [
         {
-          "name": "check_availability",
-          "description": "Check if a time slot is free in Google Calendar. Use this function when: A customer asks 'Are you available at X?' or 'Do you have openings on [date] at [time]?' Always confirm with the customer before suggesting alternatives.",
-          "parameters": {
+        "name": "check_availability",
+        "description": "Check if a specific time slot is available in the calendar, validating working hours first",
+        "parameters": {
             "type": "object",
             "properties": {
-              "time_input": {
+            "time_input": {
                 "type": "string",
-                "description": "Natural language date/time provided by the customer, e.g., 'next Monday at 2pm'"
-              },
-              "calendar_id": {
+                "description": "Natural language date/time from customer, e.g. 'tomorrow at 2pm', 'next Monday at 10am'"
+            },
+            "calendar_id": {
                 "type": "string",
-                "description": "Google Calendar ID. Defaults to 'primary'."
-              },
-              "tz": {
-                "type": "string",
-                "description": "Time zone. Defaults to 'Europe/London'."
-              }
+                "description": "Google Calendar ID. Defaults to 'primary'",
+                "default": "primary"
+            },
+            "tz": {
+                "type": "string", 
+                "description": "Timezone. Defaults to 'Europe/London'",
+                "default": "Europe/London"
+            }
             },
             "required": ["time_input"]
-          }
+        }
         },
         {
-          "name": "create_appointment",
-          "description": "Create a new appointment if the slot is free. Use this function when: A customer asks to book or schedule a service. Always confirm the customer name, service type, and date/time before calling this function.",
-          "parameters": {
+        "name": "get_available_slots",
+        "description": "Get all available appointment slots for a specific date within working hours",
+        "parameters": {
             "type": "object",
             "properties": {
-              "time_input": {
+            "date_input": {
                 "type": "string",
-                "description": "Appointment date and time in natural language or normalized format."
-              },
-              "name": {
+                "description": "Date to check in natural language, e.g. 'tomorrow', 'next Monday', 'September 15th'"
+            },
+            "calendar_id": {
                 "type": "string",
-                "description": "Customer’s full name, confirmed with the customer."
-              },
-              "service": {
+                "description": "Google Calendar ID. Defaults to 'primary'",
+                "default": "primary"
+            },
+            "tz": {
                 "type": "string",
-                "description": "Type of service requested, e.g., 'Consultation', 'Follow-up', 'Review', 'Planning'"
-              },
-              "calendar_id": {
+                "description": "Timezone. Defaults to 'Europe/London'", 
+                "default": "Europe/London"
+            },
+            "slot_duration_minutes": {
+                "type": "integer",
+                "description": "Duration of each slot in minutes. Defaults to 60",
+                "default": 60
+            }
+            },
+            "required": ["date_input"]
+        }
+        },
+        {
+        "name": "create_appointment",
+        "description": "Create a new appointment after confirming availability and working hours",
+        "parameters": {
+            "type": "object",
+            "properties": {
+            "time_input": {
                 "type": "string",
-                "description": "Google Calendar ID. Defaults to 'primary'."
-              },
-              "tz": {
+                "description": "Appointment date/time in natural language"
+            },
+            "name": {
                 "type": "string",
-                "description": "Time zone. Defaults to 'Europe/London'."
-              },
-              "description": {
+                "description": "Customer's full name as confirmed during call"
+            },
+            "service": {
                 "type": "string",
-                "description": "Optional description of the appointment."
-              },
-              "attendees": {
+                "description": "Service type, e.g. 'Chiropractic Adjustment', 'Consultation', 'Follow-up'"
+            },
+            "calendar_id": {
+                "type": "string",
+                "description": "Google Calendar ID. Defaults to 'primary'",
+                "default": "primary"
+            },
+            "tz": {
+                "type": "string",
+                "description": "Timezone. Defaults to 'Europe/London'",
+                "default": "Europe/London"
+            },
+            "description": {
+                "type": "string",
+                "description": "Optional appointment description"
+            },
+            "attendees": {
                 "type": "array",
                 "items": {
-                  "type": "string"
+                "type": "string"
                 },
-                "description": "Optional list of attendee email addresses."
-              },
-              "location": {
+                "description": "Optional attendee email addresses"
+            },
+            "location": {
                 "type": "string",
-                "description": "Optional location of the appointment."
-              },
-              "send_updates": {
+                "description": "Appointment location. Defaults to clinic address"
+            },
+            "send_updates": {
                 "type": "string",
-                "description": "Whether to send update emails to attendees. Defaults to 'none'.",
-                "enum": ["all", "externalOnly", "none"]
-              }
+                "description": "Email update setting",
+                "enum": ["all", "externalOnly", "none"],
+                "default": "none"
+            }
             },
             "required": ["time_input", "name", "service"]
-          }
         }
+        },
+        {
+        "name": "end_call",
+        "description": "End the call when customer requests it or conversation is complete",
+        "parameters": {
+            "type": "object",
+            "properties": {
+            "reason": {
+                "type": "string",
+                "description": "Reason for ending call",
+                "default": "customer_request"
+            }
+            },
+            "required": []
+        }
+        }        
       ]
     },
     "speak": {

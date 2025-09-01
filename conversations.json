@@ -1,0 +1,1014 @@
+[
+  {
+    "session_id": "e653df7c-dd18-4013-a661-5b79a5b8ec08",
+    "stream_sid": "MZ4e983f0da7aae0e7d8dd2abe6fc764b3",
+    "start_time": "2025-09-01T16:50:20.095779",
+    "end_time": "2025-09-01T16:50:20.236449",
+    "messages": [
+      {
+        "timestamp": "2025-09-01T16:50:20.096505",
+        "role": "system",
+        "content": "Session established: unknown",
+        "type": "welcome"
+      }
+    ],
+    "function_calls": [],
+    "metadata": {
+      "total_messages": 1,
+      "user_messages": 0,
+      "assistant_messages": 0,
+      "function_calls": 0,
+      "call_ended_by_user": false,
+      "duration_seconds": 0.14067
+    }
+  },
+  {
+    "session_id": "f2bdbe4a-2f0f-4f8c-aee9-fcf3603caa18",
+    "stream_sid": "MZf1aa3dd514a6187cee00ff89e51c615b",
+    "start_time": "2025-09-01T16:50:52.203572",
+    "end_time": "2025-09-01T16:50:52.343198",
+    "messages": [
+      {
+        "timestamp": "2025-09-01T16:50:52.204137",
+        "role": "system",
+        "content": "Session established: unknown",
+        "type": "welcome"
+      }
+    ],
+    "function_calls": [],
+    "metadata": {
+      "total_messages": 1,
+      "user_messages": 0,
+      "assistant_messages": 0,
+      "function_calls": 0,
+      "call_ended_by_user": false,
+      "duration_seconds": 0.139626
+    }
+  },
+  {
+    "session_id": "49fe178b-5a6c-494b-bba6-4304754623c6",
+    "stream_sid": "MZ74ac15d7faced9870346547582a59519",
+    "start_time": "2025-09-01T16:56:20.156578",
+    "end_time": "2025-09-01T16:56:20.298775",
+    "messages": [
+      {
+        "timestamp": "2025-09-01T16:56:20.157244",
+        "role": "system",
+        "content": "Session established: unknown",
+        "type": "welcome"
+      }
+    ],
+    "function_calls": [],
+    "metadata": {
+      "total_messages": 1,
+      "user_messages": 0,
+      "assistant_messages": 0,
+      "function_calls": 0,
+      "call_ended_by_user": false,
+      "duration_seconds": 0.142197
+    }
+  },
+  {
+    "session_id": "2e165b05-3bfc-47d5-89b0-45c59e13d5ec",
+    "stream_sid": "MZ49b7144077b40f12629455a22e391cd6",
+    "start_time": "2025-09-01T16:56:59.630053",
+    "end_time": "2025-09-01T16:57:03.994422",
+    "messages": [
+      {
+        "timestamp": "2025-09-01T16:56:59.630574",
+        "role": "system",
+        "content": "Session established: unknown",
+        "type": "welcome"
+      },
+      {
+        "timestamp": "2025-09-01T16:57:00.014655",
+        "role": "assistant",
+        "content": "Hi, this is Stacey at The Joint Chiropractic in Gadsden. How can I help you today?",
+        "type": "text"
+      }
+    ],
+    "function_calls": [],
+    "metadata": {
+      "total_messages": 2,
+      "user_messages": 0,
+      "assistant_messages": 1,
+      "function_calls": 0,
+      "call_ended_by_user": false,
+      "duration_seconds": 4.364369
+    }
+  },
+  {
+    "session_id": "9b07740e-83e2-4914-a10a-4def72647454",
+    "stream_sid": "MZ6ee7864961513bea4eb315ebe5283887",
+    "start_time": "2025-09-01T16:57:46.521543",
+    "end_time": "2025-09-01T16:58:57.783969",
+    "messages": [
+      {
+        "timestamp": "2025-09-01T16:57:46.521923",
+        "role": "system",
+        "content": "Session established: unknown",
+        "type": "welcome"
+      },
+      {
+        "timestamp": "2025-09-01T16:57:46.919843",
+        "role": "assistant",
+        "content": "Hi, this is Stacey at The Joint Chiropractic in Gadsden. How can I help you today?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:57:54.833617",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T16:57:56.038105",
+        "role": "user",
+        "content": "Is there a an availability tomorrow?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:57:57.631375",
+        "role": "assistant",
+        "content": "Sure, let me check for availability tomorrow.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:00.632686",
+        "role": "assistant",
+        "content": "What time were you thinking of coming in?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:06.433154",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:06.836356",
+        "role": "user",
+        "content": "Three PM.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:08.648027",
+        "role": "assistant",
+        "content": "We've got a slot available tomorrow at 3 in the afternoon.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:12.169395",
+        "role": "assistant",
+        "content": "Would you like to go ahead and book that?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:15.634199",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:16.033142",
+        "role": "user",
+        "content": "Yes.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:16.714816",
+        "role": "assistant",
+        "content": "Great!",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:17.397524",
+        "role": "assistant",
+        "content": "Can I have your full name, please?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:21.234888",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:22.041504",
+        "role": "user",
+        "content": "Sherlock.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:22.843333",
+        "role": "assistant",
+        "content": "Thanks, Sherlock.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:23.964395",
+        "role": "assistant",
+        "content": "Could you also provide your email address?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:28.833220",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:30.841246",
+        "role": "user",
+        "content": "Garlby sherlock p j r at gmail dot com.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:31.672510",
+        "role": "assistant",
+        "content": "Just to confirm, that's garlbysherlockpjr@gmail.com.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:36.594096",
+        "role": "assistant",
+        "content": "Is that correct?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:38.032645",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:38.430007",
+        "role": "user",
+        "content": "Nope.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:41.232594",
+        "role": "assistant",
+        "content": "No problem.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:41.633305",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:42.038827",
+        "role": "user",
+        "content": "It should be",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:42.830057",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:44.437180",
+        "role": "user",
+        "content": "s h e r",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:45.231437",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:46.037711",
+        "role": "user",
+        "content": "l o c k",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:47.233269",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:49.647110",
+        "role": "user",
+        "content": "d j r at g mail dot com.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:50.382286",
+        "role": "assistant",
+        "content": "Got it, so that's sherlockdjr@gmail.com.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T16:58:54.664330",
+        "role": "assistant",
+        "content": "Is that correct?",
+        "type": "text"
+      }
+    ],
+    "function_calls": [
+      {
+        "timestamp": "2025-09-01T16:58:07.770178",
+        "function_name": "check_availability",
+        "arguments": {
+          "time_input": "tomorrow at 3pm",
+          "tz": "America/Chicago"
+        },
+        "result": {
+          "status": "available",
+          "message": "Yes, available."
+        },
+        "execution_time_ms": 291.70894622802734,
+        "success": true
+      }
+    ],
+    "metadata": {
+      "total_messages": 35,
+      "user_messages": 10,
+      "assistant_messages": 14,
+      "function_calls": 1,
+      "call_ended_by_user": false,
+      "duration_seconds": 71.262426
+    }
+  },
+  {
+    "session_id": "59730936-402e-4787-83d7-f15da871c998",
+    "stream_sid": "MZ039cd6e9a7742b1e4c95575915006b0a",
+    "start_time": "2025-09-01T17:56:25.346647",
+    "end_time": "2025-09-01T17:57:19.066318",
+    "messages": [
+      {
+        "timestamp": "2025-09-01T17:56:25.346864",
+        "role": "system",
+        "content": "Session established: unknown",
+        "type": "welcome"
+      },
+      {
+        "timestamp": "2025-09-01T17:56:25.738049",
+        "role": "assistant",
+        "content": "Hi, this is Stacey at The Joint Chiropractic in Gadsden. How can I help you today?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:56:32.383518",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T17:56:33.974070",
+        "role": "user",
+        "content": "What are the available slots tomorrow?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:56:43.554012",
+        "role": "assistant",
+        "content": "Tomorrow, we have openings at 10 in the morning and 2:45 in the afternoon.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:56:48.269698",
+        "role": "assistant",
+        "content": "Would you like to book one of those?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:56:54.769424",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T17:56:55.971200",
+        "role": "user",
+        "content": "Yes. In the morning.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:56:56.371290",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T17:56:59.182753",
+        "role": "user",
+        "content": "My name is Sherlock. The service is",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:57:00.770049",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T17:57:01.577052",
+        "role": "user",
+        "content": "consultant.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:57:02.205110",
+        "role": "assistant",
+        "content": "Great choice, Sherlock.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:57:03.760619",
+        "role": "assistant",
+        "content": "Could you please provide your email and phone number?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:57:09.568924",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T17:57:10.368945",
+        "role": "user",
+        "content": "No.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:57:11.408020",
+        "role": "assistant",
+        "content": "I understand, but I need your contact information to complete the booking.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T17:57:15.409844",
+        "role": "assistant",
+        "content": "Could you share your email and phone number, please?",
+        "type": "text"
+      }
+    ],
+    "function_calls": [
+      {
+        "timestamp": "2025-09-01T17:56:35.109910",
+        "function_name": "check_availability",
+        "arguments": {
+          "time_input": "tomorrow",
+          "tz": "America/Chicago"
+        },
+        "result": {
+          "status": "available",
+          "message": "Yes, available."
+        },
+        "execution_time_ms": 198.35209846496582,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-01T17:56:37.849117",
+        "function_name": "check_availability",
+        "arguments": {
+          "time_input": "tomorrow at 10 in the morning",
+          "tz": "America/Chicago"
+        },
+        "result": {
+          "error": "Could not parse time expression: 'tomorrow at 10 in the morning'",
+          "suggestion": "Try formats like: 'tomorrow at 2pm', 'next Monday 9am to 5pm', 'September 1st at 3pm'"
+        },
+        "execution_time_ms": 713.3920192718506,
+        "success": false
+      },
+      {
+        "timestamp": "2025-09-01T17:56:38.577263",
+        "function_name": "check_availability",
+        "arguments": {
+          "time_input": "tomorrow at 2 in the afternoon",
+          "tz": "America/Chicago"
+        },
+        "result": {
+          "error": "Could not parse time expression: 'tomorrow at 2 in the afternoon'",
+          "suggestion": "Try formats like: 'tomorrow at 2pm', 'next Monday 9am to 5pm', 'September 1st at 3pm'"
+        },
+        "execution_time_ms": 588.4048938751221,
+        "success": false
+      },
+      {
+        "timestamp": "2025-09-01T17:56:39.316473",
+        "function_name": "check_availability",
+        "arguments": {
+          "time_input": "tomorrow at 2:45 in the afternoon",
+          "tz": "America/Chicago"
+        },
+        "result": {
+          "error": "Could not parse time expression: 'tomorrow at 2:45 in the afternoon'",
+          "suggestion": "Try formats like: 'tomorrow at 2pm', 'next Monday 9am to 5pm', 'September 1st at 3pm'"
+        },
+        "execution_time_ms": 600.5289554595947,
+        "success": false
+      },
+      {
+        "timestamp": "2025-09-01T17:56:41.881576",
+        "function_name": "check_availability",
+        "arguments": {
+          "time_input": "tomorrow at 14:45",
+          "tz": "America/Chicago"
+        },
+        "result": {
+          "status": "available",
+          "message": "Yes, available."
+        },
+        "execution_time_ms": 180.0079345703125,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-01T17:56:42.032447",
+        "function_name": "check_availability",
+        "arguments": {
+          "time_input": "tomorrow at 14:00",
+          "tz": "America/Chicago"
+        },
+        "result": {
+          "status": "outside_hours",
+          "message": "Outside working hours. We are open: 10-14, 14:45-19",
+          "working_hours": {
+            "Monday": "10:00-14:00, 14:45-19:00",
+            "Tuesday": "10:00-14:00, 14:45-19:00",
+            "Wednesday": "10:00-14:00, 14:45-19:00",
+            "Thursday": "10:00-14:00, 14:45-19:00",
+            "Friday": "10:00-14:00, 14:45-19:00",
+            "Saturday": "10:00-16:00",
+            "Sunday": "Closed"
+          }
+        },
+        "execution_time_ms": 10.685920715332031,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-01T17:56:42.323414",
+        "function_name": "check_availability",
+        "arguments": {
+          "time_input": "tomorrow at 10:00",
+          "tz": "America/Chicago"
+        },
+        "result": {
+          "status": "available",
+          "message": "Yes, available."
+        },
+        "execution_time_ms": 149.83081817626953,
+        "success": true
+      }
+    ],
+    "metadata": {
+      "total_messages": 18,
+      "user_messages": 5,
+      "assistant_messages": 7,
+      "function_calls": 7,
+      "call_ended_by_user": false,
+      "duration_seconds": 53.719671
+    }
+  },
+  {
+    "session_id": "27db2f8f-692b-4d5b-9134-b7207b42eaaf",
+    "stream_sid": "MZ5b146a756cfafcc934b0d85db325b128",
+    "start_time": "2025-09-01T19:23:51.409604",
+    "end_time": "2025-09-01T19:24:02.493077",
+    "messages": [
+      {
+        "timestamp": "2025-09-01T19:23:51.409876",
+        "role": "system",
+        "content": "Session established: unknown",
+        "type": "welcome"
+      },
+      {
+        "timestamp": "2025-09-01T19:23:51.815435",
+        "role": "assistant",
+        "content": "Hi, this is Stacey at The Joint Chiropractic in Gadsden. How can I help you today?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:23:54.582621",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:23:54.962243",
+        "role": "user",
+        "content": "Hello?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:23:55.835835",
+        "role": "assistant",
+        "content": "Hi there, I\u2019m here.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:23:56.578475",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:23:57.356555",
+        "role": "user",
+        "content": "End the call.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:23:59.915544",
+        "role": "assistant",
+        "content": "Thanks for calling.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:24:01.276504",
+        "role": "assistant",
+        "content": "Take care.",
+        "type": "text"
+      }
+    ],
+    "function_calls": [
+      {
+        "timestamp": "2025-09-01T19:23:59.022285",
+        "function_name": "end_call",
+        "arguments": {
+          "reason": "customer_request"
+        },
+        "result": {
+          "status": "call_ending",
+          "message": "Call will be terminated after farewell"
+        },
+        "execution_time_ms": 0.05984306335449219,
+        "success": true
+      }
+    ],
+    "metadata": {
+      "total_messages": 9,
+      "user_messages": 2,
+      "assistant_messages": 4,
+      "function_calls": 1,
+      "call_ended_by_user": true,
+      "duration_seconds": 11.083473
+    }
+  },
+  {
+    "session_id": "86472129-53d4-478a-a5e1-f042a3061d20",
+    "stream_sid": "MZ1e7215be22cfa697e33f5ab399372136",
+    "start_time": "2025-09-01T19:50:31.779125",
+    "end_time": "2025-09-01T19:52:05.842840",
+    "messages": [
+      {
+        "timestamp": "2025-09-01T19:50:31.780067",
+        "role": "system",
+        "content": "Session established: unknown",
+        "type": "welcome"
+      },
+      {
+        "timestamp": "2025-09-01T19:50:32.173005",
+        "role": "assistant",
+        "content": "Hi, this is Stacey at The Joint Chiropractic in Gadsden. How can I help you today?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:50:38.637399",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:50:41.442069",
+        "role": "user",
+        "content": "What are some availability slots tomorrow?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:50:43.680958",
+        "role": "assistant",
+        "content": "We've got a few slots available tomorrow.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:50:46.042193",
+        "role": "assistant",
+        "content": "You can choose from:\n\n- 10 in the morning\n- 12 in the afternoon\n- 1 in the afternoon\n- 4:45 in the afternoon\n- 5:45 in the afternoon\n\nWhich one works for you?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:50:58.640614",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:01.442575",
+        "role": "user",
+        "content": "Can you book me in for Wednesday?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:01.883825",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:03.043183",
+        "role": "user",
+        "content": "Three PM?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:05.092886",
+        "role": "assistant",
+        "content": "It looks like we don't have a slot available at 3 in the afternoon on Wednesday.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:09.454611",
+        "role": "assistant",
+        "content": "The closest option is at 3:45.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:12.136417",
+        "role": "assistant",
+        "content": "Would you like to book that instead?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:16.235520",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:18.642877",
+        "role": "user",
+        "content": "Yes, please. The name is Sherlock.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:20.235505",
+        "role": "assistant",
+        "content": "Could you please provide me with your email and phone number?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:25.041348",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:30.248240",
+        "role": "user",
+        "content": "Email is s h e r l o c k p j r at Gmail dot com.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:31.037286",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:31.848457",
+        "role": "user",
+        "content": "The phone number is",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:32.297279",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:33.844507",
+        "role": "user",
+        "content": "one two three four five",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:34.744599",
+        "role": "assistant",
+        "content": "Just to confirm, your email is sherlockpjr@gmail.com, and your phone number is 12345.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:43.306260",
+        "role": "assistant",
+        "content": "Is that correct?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:45.838348",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:48.251619",
+        "role": "user",
+        "content": "Yes. Book for me and then end the call.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:50.860759",
+        "role": "assistant",
+        "content": "It seems I can't complete the booking for 3:45 on Wednesday since it's outside our working hours.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:51:56.903054",
+        "role": "assistant",
+        "content": "Can I help you find a different time?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:52:01.036323",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-01T19:52:01.438336",
+        "role": "user",
+        "content": "End the call.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:52:03.067987",
+        "role": "assistant",
+        "content": "Thanks for calling.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-01T19:52:04.350603",
+        "role": "assistant",
+        "content": "Take care.",
+        "type": "text"
+      }
+    ],
+    "function_calls": [
+      {
+        "timestamp": "2025-09-01T19:50:42.773457",
+        "function_name": "get_available_slots",
+        "arguments": {
+          "date_input": "tomorrow"
+        },
+        "result": {
+          "status": "success",
+          "date": "2025-09-02",
+          "day_name": "Tuesday",
+          "available_slots": [
+            {
+              "start_time": "10:00",
+              "start_datetime": "2025-09-02T10:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "12:00",
+              "start_datetime": "2025-09-02T12:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "13:00",
+              "start_datetime": "2025-09-02T13:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "16:45",
+              "start_datetime": "2025-09-02T16:45:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "17:45",
+              "start_datetime": "2025-09-02T17:45:00+01:00",
+              "duration_minutes": 60
+            }
+          ],
+          "total_slots": 5,
+          "working_hours": {
+            "Tuesday": "10:00-14:00, 14:45-19:00"
+          }
+        },
+        "execution_time_ms": 364.44091796875,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-01T19:51:03.933073",
+        "function_name": "get_available_slots",
+        "arguments": {
+          "date_input": "Wednesday"
+        },
+        "result": {
+          "status": "success",
+          "date": "2025-09-03",
+          "day_name": "Wednesday",
+          "available_slots": [
+            {
+              "start_time": "10:00",
+              "start_datetime": "2025-09-03T10:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "11:00",
+              "start_datetime": "2025-09-03T11:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "12:00",
+              "start_datetime": "2025-09-03T12:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "13:00",
+              "start_datetime": "2025-09-03T13:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "14:45",
+              "start_datetime": "2025-09-03T14:45:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "15:45",
+              "start_datetime": "2025-09-03T15:45:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "16:45",
+              "start_datetime": "2025-09-03T16:45:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "17:45",
+              "start_datetime": "2025-09-03T17:45:00+01:00",
+              "duration_minutes": 60
+            }
+          ],
+          "total_slots": 8,
+          "working_hours": {
+            "Wednesday": "10:00-14:00, 14:45-19:00"
+          }
+        },
+        "execution_time_ms": 317.43884086608887,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-01T19:51:49.798677",
+        "function_name": "create_appointment",
+        "arguments": {
+          "email_update_setting": "none",
+          "location": "510 E Meighan Blvd A10, Gadsden, AL 35903",
+          "name": "Sherlock",
+          "service": "Chiropractic Adjustment",
+          "time_input": "Wednesday at 3:45"
+        },
+        "result": {
+          "status": "outside_hours",
+          "message": "Outside working hours. We are open: 10-14, 14:45-19",
+          "working_hours": {
+            "Monday": "10:00-14:00, 14:45-19:00",
+            "Tuesday": "10:00-14:00, 14:45-19:00",
+            "Wednesday": "10:00-14:00, 14:45-19:00",
+            "Thursday": "10:00-14:00, 14:45-19:00",
+            "Friday": "10:00-14:00, 14:45-19:00",
+            "Saturday": "10:00-16:00",
+            "Sunday": "Closed"
+          }
+        },
+        "execution_time_ms": 21.91305160522461,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-01T19:52:02.306993",
+        "function_name": "end_call",
+        "arguments": {
+          "reason": "customer_request"
+        },
+        "result": {
+          "status": "call_ending",
+          "message": "Call will be terminated after farewell"
+        },
+        "execution_time_ms": 0.017881393432617188,
+        "success": true
+      }
+    ],
+    "metadata": {
+      "total_messages": 32,
+      "user_messages": 9,
+      "assistant_messages": 13,
+      "function_calls": 4,
+      "call_ended_by_user": true,
+      "duration_seconds": 94.063715
+    }
+  }
+]
