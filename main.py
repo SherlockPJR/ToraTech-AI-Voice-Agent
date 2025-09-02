@@ -278,6 +278,23 @@ async def handle_text_message(decoded, twilio_ws, sts_ws, streamsid):
         content = decoded.get("content", "")
         conversation_logger.log_message(role, content)
         
+        # Check is the agent is ending the call
+        if role == "assistant":
+            farewell_phrases = [
+                "have a great day",
+                "thanks for calling",
+                "take care",
+                "we'll see you",
+                "goodbye",
+                "talk to you soon",
+                "have a good day"
+            ]
+            
+            # Check if agent is giving farewell
+            if any(phrase in content.lower() for phrase in farewell_phrases):
+                logger.info("Agent farewell detected - preparing to end call")
+                call_should_end = True
+
         # Check if user is requesting call end
         if role == "user" and any(phrase in content.lower() for phrase in ["end call", "hang up", "goodbye", "end this call", "finish call"]):
             logger.info("User requested call termination via message")
