@@ -3342,5 +3342,572 @@
       "call_ended_by_user": true,
       "duration_seconds": 87.164101
     }
+  },
+  {
+    "session_id": "967ae07f-9448-4912-877b-c2a3ef838e00",
+    "stream_sid": "MZee1d7dc1d19f5ec84dc736c8863dbc2d",
+    "start_time": "2025-09-03T11:46:07.131701",
+    "end_time": "2025-09-03T11:47:29.607164",
+    "messages": [
+      {
+        "timestamp": "2025-09-03T11:46:07.132243",
+        "role": "system",
+        "content": "Session established: unknown",
+        "type": "welcome"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:07.550274",
+        "role": "assistant",
+        "content": "Hi, this is Stacey at The Joint Chiropractic in Gadsden. How can I help you today?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:11.324449",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:14.128542",
+        "role": "user",
+        "content": "Hi. What are the available slots tomorrow?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:18.771958",
+        "role": "assistant",
+        "content": "Tomorrow, we have slots available at 10 in the morning, 11, and 12.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:23.374836",
+        "role": "assistant",
+        "content": "Would you like to book one of these times?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:27.402511",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:28.129586",
+        "role": "user",
+        "content": "What about the afternoon?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:29.171638",
+        "role": "assistant",
+        "content": "In the afternoon, we have openings at 2:45, 3:45, 4:45, and 5:45.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:36.604463",
+        "role": "assistant",
+        "content": "Would any of these times work for you?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:41.380959",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-03T11:46:51.744699",
+        "role": "user",
+        "content": "Book me in for three forty five. The name is Sherlock. Email is s h e r l o c k p j r at g mail dot com. Phone number is plus four four one two three four five.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:00.958406",
+        "role": "assistant",
+        "content": "Let's make sure I've got the spelling and details right.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:04.240375",
+        "role": "assistant",
+        "content": "Your name is spelled S-h-e-r-l-o-c-k, and your email is s-h-e-r-l-o-c-k-p-j-r at gmail.com.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:10.115646",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:11.724490",
+        "role": "user",
+        "content": "Yes.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:15.281614",
+        "role": "assistant",
+        "content": "You're all set for your appointment on Thursday at 3:45 in the afternoon.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:19.742336",
+        "role": "assistant",
+        "content": "Is there anything else I can assist you with?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:23.739167",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:24.616211",
+        "role": "user",
+        "content": "That's everything.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:26.713372",
+        "role": "assistant",
+        "content": "Thanks for calling.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:28.129361",
+        "role": "assistant",
+        "content": "Take care.",
+        "type": "text"
+      }
+    ],
+    "function_calls": [
+      {
+        "timestamp": "2025-09-03T11:46:15.396466",
+        "function_name": "check_availability",
+        "arguments": {
+          "calendar_id": "primary",
+          "time_input": "tomorrow",
+          "tz": "Europe/London"
+        },
+        "result": {
+          "status": "available",
+          "message": "Yes, available."
+        },
+        "execution_time_ms": 297.32513427734375,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-03T11:46:17.434390",
+        "function_name": "get_available_slots",
+        "arguments": {
+          "date_input": "tomorrow",
+          "tz": "Europe/London"
+        },
+        "result": {
+          "status": "success",
+          "date": "2025-09-04",
+          "day_name": "Thursday",
+          "available_slots": [
+            {
+              "start_time": "10:00",
+              "start_datetime": "2025-09-04T10:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "11:00",
+              "start_datetime": "2025-09-04T11:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "12:00",
+              "start_datetime": "2025-09-04T12:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "13:00",
+              "start_datetime": "2025-09-04T13:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "14:45",
+              "start_datetime": "2025-09-04T14:45:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "15:45",
+              "start_datetime": "2025-09-04T15:45:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "16:45",
+              "start_datetime": "2025-09-04T16:45:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "17:45",
+              "start_datetime": "2025-09-04T17:45:00+01:00",
+              "duration_minutes": 60
+            }
+          ],
+          "total_slots": 8,
+          "working_hours": {
+            "Thursday": "10:00-14:00, 14:45-19:00"
+          }
+        },
+        "execution_time_ms": 174.9260425567627,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-03T11:47:13.539463",
+        "function_name": "create_appointment",
+        "arguments": {
+          "attendees": [
+            "sherlockpjr@gmail.com"
+          ],
+          "name": "Sherlock",
+          "service": "Chiropractic Adjustment",
+          "time_input": "2025-09-04T15:45:00",
+          "tz": "Europe/London"
+        },
+        "result": {
+          "status": "created",
+          "event": {
+            "kind": "calendar#event",
+            "etag": "\"3513792866985342\"",
+            "id": "ps5gob6pm9iupd5phiu0t96iek",
+            "status": "confirmed",
+            "htmlLink": "https://www.google.com/calendar/event?eid=cHM1Z29iNnBtOWl1cGQ1cGhpdTB0OTZpZWsgc2hlcmxvY2twanJAbQ",
+            "created": "2025-09-03T10:47:13.000Z",
+            "updated": "2025-09-03T10:47:13.492Z",
+            "summary": "Appointment with Sherlock",
+            "creator": {
+              "email": "sherlockpjr@gmail.com",
+              "self": true
+            },
+            "organizer": {
+              "email": "sherlockpjr@gmail.com",
+              "self": true
+            },
+            "start": {
+              "dateTime": "2025-09-04T15:45:00+01:00",
+              "timeZone": "Europe/London"
+            },
+            "end": {
+              "dateTime": "2025-09-04T16:45:00+01:00",
+              "timeZone": "Europe/London"
+            },
+            "iCalUID": "ps5gob6pm9iupd5phiu0t96iek@google.com",
+            "sequence": 0,
+            "attendees": [
+              {
+                "email": "sherlockpjr@gmail.com",
+                "organizer": true,
+                "self": true,
+                "responseStatus": "needsAction"
+              }
+            ],
+            "reminders": {
+              "useDefault": true
+            },
+            "eventType": "default"
+          },
+          "message": "Appointment booked: https://www.google.com/calendar/event?eid=cHM1Z29iNnBtOWl1cGQ1cGhpdTB0OTZpZWsgc2hlcmxvY2twanJAbQ"
+        },
+        "execution_time_ms": 412.3067855834961,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-03T11:47:25.620219",
+        "function_name": "end_call",
+        "arguments": {
+          "reason": "customer_request"
+        },
+        "result": {
+          "status": "call_ending",
+          "message": "Call will be terminated after farewell"
+        },
+        "execution_time_ms": 0.0171661376953125,
+        "success": true
+      }
+    ],
+    "metadata": {
+      "total_messages": 22,
+      "user_messages": 5,
+      "assistant_messages": 11,
+      "function_calls": 4,
+      "call_ended_by_user": true,
+      "duration_seconds": 82.475463
+    }
+  },
+  {
+    "session_id": "6f439060-b437-4828-b28e-a9b7040cb725",
+    "stream_sid": "MZ923df46d35b4aa4749f504ae5fe4c890",
+    "start_time": "2025-09-03T11:47:38.940925",
+    "end_time": "2025-09-03T11:48:35.601431",
+    "messages": [
+      {
+        "timestamp": "2025-09-03T11:47:38.941120",
+        "role": "system",
+        "content": "Session established: unknown",
+        "type": "welcome"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:39.352669",
+        "role": "assistant",
+        "content": "Hi, this is Stacey at The Joint Chiropractic in Gadsden. How can I help you today?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:44.072102",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:47.679083",
+        "role": "user",
+        "content": "Hi. Do you have an availability tomorrow afternoon at three thirty?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:49.676089",
+        "role": "assistant",
+        "content": "It looks like we're booked at 3:30 tomorrow.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:52.438729",
+        "role": "assistant",
+        "content": "Would you like me to check for other available times in the afternoon?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:55.670507",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:56.471985",
+        "role": "user",
+        "content": "Yes.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:47:58.869953",
+        "role": "assistant",
+        "content": "We have openings tomorrow at 2:45, 4:45, and 5:45 in the afternoon.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:04.951297",
+        "role": "assistant",
+        "content": "Does any of these times work for you?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:06.120321",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:13.686391",
+        "role": "user",
+        "content": "Book me in for two forty five. The name is Sherlock. The email is ignored. The phone number is ignored.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:14.876244",
+        "role": "assistant",
+        "content": "Could you please confirm the spelling of your name, Sherlock?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:20.083610",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:21.322256",
+        "role": "user",
+        "content": "S h e r l o c k.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:24.132722",
+        "role": "assistant",
+        "content": "Your appointment is all set for tomorrow at 2:45.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:27.616188",
+        "role": "assistant",
+        "content": "Is there anything else I can help you with?",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:31.285210",
+        "role": "system",
+        "content": "User started speaking (barge-in)",
+        "type": "barge_in"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:31.810085",
+        "role": "user",
+        "content": "That's everything.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:32.858440",
+        "role": "assistant",
+        "content": "Thanks for calling.",
+        "type": "text"
+      },
+      {
+        "timestamp": "2025-09-03T11:48:34.095789",
+        "role": "assistant",
+        "content": "Take care.",
+        "type": "text"
+      }
+    ],
+    "function_calls": [
+      {
+        "timestamp": "2025-09-03T11:47:48.553661",
+        "function_name": "check_availability",
+        "arguments": {
+          "time_input": "tomorrow at 3:30pm",
+          "tz": "Europe/London"
+        },
+        "result": {
+          "status": "busy",
+          "message": "Not available.",
+          "busy": [
+            {
+              "start": "2025-09-04T14:45:00Z",
+              "end": "2025-09-04T15:30:00Z"
+            }
+          ]
+        },
+        "execution_time_ms": 171.30708694458008,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-03T11:47:57.245621",
+        "function_name": "get_available_slots",
+        "arguments": {
+          "date_input": "tomorrow",
+          "slot_duration_minutes": 60,
+          "tz": "Europe/London"
+        },
+        "result": {
+          "status": "success",
+          "date": "2025-09-04",
+          "day_name": "Thursday",
+          "available_slots": [
+            {
+              "start_time": "10:00",
+              "start_datetime": "2025-09-04T10:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "11:00",
+              "start_datetime": "2025-09-04T11:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "12:00",
+              "start_datetime": "2025-09-04T12:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "13:00",
+              "start_datetime": "2025-09-04T13:00:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "14:45",
+              "start_datetime": "2025-09-04T14:45:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "16:45",
+              "start_datetime": "2025-09-04T16:45:00+01:00",
+              "duration_minutes": 60
+            },
+            {
+              "start_time": "17:45",
+              "start_datetime": "2025-09-04T17:45:00+01:00",
+              "duration_minutes": 60
+            }
+          ],
+          "total_slots": 7,
+          "working_hours": {
+            "Thursday": "10:00-14:00, 14:45-19:00"
+          }
+        },
+        "execution_time_ms": 152.01091766357422,
+        "success": true
+      },
+      {
+        "timestamp": "2025-09-03T11:48:22.767549",
+        "function_name": "create_appointment",
+        "arguments": {
+          "name": "Sherlock",
+          "service": "Chiropractic Adjustment",
+          "time_input": "tomorrow at 2:45pm",
+          "tz": "Europe/London"
+        },
+        "result": {
+          "status": "created",
+          "event": {
+            "kind": "calendar#event",
+            "etag": "\"3513793005475358\"",
+            "id": "2i4knoceekb5rkg24qifjanucs",
+            "status": "confirmed",
+            "htmlLink": "https://www.google.com/calendar/event?eid=Mmk0a25vY2Vla2I1cmtnMjRxaWZqYW51Y3Mgc2hlcmxvY2twanJAbQ",
+            "created": "2025-09-03T10:48:22.000Z",
+            "updated": "2025-09-03T10:48:22.737Z",
+            "summary": "Appointment with Sherlock",
+            "creator": {
+              "email": "sherlockpjr@gmail.com",
+              "self": true
+            },
+            "organizer": {
+              "email": "sherlockpjr@gmail.com",
+              "self": true
+            },
+            "start": {
+              "dateTime": "2025-09-04T14:45:00+01:00",
+              "timeZone": "Europe/London"
+            },
+            "end": {
+              "dateTime": "2025-09-04T15:45:00+01:00",
+              "timeZone": "Europe/London"
+            },
+            "iCalUID": "2i4knoceekb5rkg24qifjanucs@google.com",
+            "sequence": 0,
+            "reminders": {
+              "useDefault": true
+            },
+            "eventType": "default"
+          },
+          "message": "Appointment booked: https://www.google.com/calendar/event?eid=Mmk0a25vY2Vla2I1cmtnMjRxaWZqYW51Y3Mgc2hlcmxvY2twanJAbQ"
+        },
+        "execution_time_ms": 495.8457946777344,
+        "success": true
+      }
+    ],
+    "metadata": {
+      "total_messages": 21,
+      "user_messages": 5,
+      "assistant_messages": 10,
+      "function_calls": 3,
+      "call_ended_by_user": false,
+      "duration_seconds": 56.660506
+    }
   }
 ]

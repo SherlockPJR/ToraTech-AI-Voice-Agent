@@ -526,6 +526,7 @@ async def check_availability(params):
     user_input = params.get("time_input")
     calendar_id = params.get("calendar_id", "primary")
     tz = params.get("tz", "Europe/London")
+    slot_duration = params.get("slot_duration_minutes", DEFAULT_SLOT_DURATION)
 
     if not user_input:
         return {"error": "time_input is required"}
@@ -548,20 +549,36 @@ async def check_availability(params):
             "working_hours": format_working_hours()
         }
 
-    # Check Google Calendar availability
+    # Calculate the actual end time based on slot duration
+    slot_end_dt = start_dt + datetime.timedelta(minutes=slot_duration)
+    
+    # Check Google Calendar availability for the full slot duration
     body = {
-        "timeMin": norm["start"]["dateTime"],
-        "timeMax": norm["end"]["dateTime"],
+        "timeMin": start_dt.isoformat(),
+        "timeMax": slot_end_dt.isoformat(),
         "items": [{"id": calendar_id}],
     }
 
-    freebusy = service.freebusy().query(body=body).execute()
-    busy_times = freebusy["calendars"][calendar_id]["busy"]
-
-    if not busy_times:
+    try:
+        freebusy = service.freebusy().query(body=body).execute()
+        busy_times = freebusy["calendars"][calendar_id]["busy"]
+        
+        if not busy_times:
+            return {"status": "available", "message": "Yes, available."}
+        
+        # Check for conflicts with proper overlap detection
+        for busy in busy_times:
+            busy_start = datetime.datetime.fromisoformat(busy["start"])
+            busy_end = datetime.datetime.fromisoformat(busy["end"])
+            
+            # Check if the requested slot overlaps with any busy period
+            if (start_dt < busy_end and slot_end_dt > busy_start):
+                return {"status": "busy", "message": "Not available.", "busy": busy_times}
+        
         return {"status": "available", "message": "Yes, available."}
-    else:
-        return {"status": "busy", "message": "Not available.", "busy": busy_times}
+        
+    except Exception as e:
+        return {"error": f"Error checking calendar: {str(e)}"}
 
 
 async def get_available_slots(params):
