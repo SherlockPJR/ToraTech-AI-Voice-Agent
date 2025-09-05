@@ -34,8 +34,21 @@ WORKING_HOURS = {
     6: []                                  # Sunday: closed
 }
 
-# Default appointment duration in minutes
-DEFAULT_SLOT_DURATION = 60  # 1 hour slots
+async def get_clinic_slot_duration(clinic_id: str) -> int:
+    """Get clinic-specific slot duration from Supabase, fallback to 60 minutes"""
+    try:
+        supabase = init_supabase()
+        result = supabase.table("clinics_available_time_slots").select("slot_duration_minutes").eq("clinic_id", clinic_id).limit(1).execute()
+        
+        if result.data and result.data[0].get('slot_duration_minutes'):
+            return result.data[0]['slot_duration_minutes']
+        
+        # Fallback to default 60 minutes if not found
+        return 60
+        
+    except Exception:
+        # Fallback to default on error
+        return 60
 
 def get_credentials():
     """Retrieve stored credentials or trigger OAuth flow if needed."""
@@ -69,22 +82,52 @@ def init_supabase() -> Client:
     
     return create_client(supabase_url, supabase_key)
 
-async def get_clinic_by_id(clinic_id: str) -> Optional[Dict]:
-    """Get clinic information from Supabase by clinic_id"""
+async def get_clinic_by_phone(phone_number: str) -> Optional[Dict]:
+    """Get clinic information from Supabase by voice_agent_phone_number"""
     try:
         supabase = init_supabase()
-        result = supabase.table("clinics").select("*").eq("clinic_id", clinic_id).execute()
+        
+        # Use LIKE pattern to handle whitespace issues (like trailing newlines)
+        result = supabase.table("clinics").select("*").like("voice_agent_phone_number", f"%{phone_number}%").execute()
+        
+        # If that doesn't work, try exact match
+        if not result.data:
+            result = supabase.table("clinics").select("*").eq("voice_agent_phone_number", phone_number).execute()
+        
         return result.data[0] if result.data else None
     except Exception:
         return None
 
-async def get_customer_by_id(customer_id: str) -> Optional[Dict]:
-    """Get customer information from Supabase by customer_id"""
+async def get_customer_by_phone(phone_number: str) -> Optional[Dict]:
+    """Get customer information from Supabase by phone_number"""
     try:
         supabase = init_supabase()
-        result = supabase.table("customers").select("*").eq("customer_id", customer_id).execute()
+        result = supabase.table("customers").select("*").eq("phone_number", phone_number).execute()
         return result.data[0] if result.data else None
     except Exception:
+        return None
+
+async def get_or_create_customer_by_phone(phone_number: str) -> Optional[Dict]:
+    """Get customer by phone, create if doesn't exist"""
+    try:
+        # First try to get existing customer
+        customer = await get_customer_by_phone(phone_number)
+        if customer:
+            return customer
+        
+        # Create new customer if not found
+        supabase = init_supabase()
+        new_customer_data = {
+            "phone_number": phone_number,
+            "created_at": datetime.now().isoformat()
+        }
+        
+        result = supabase.table("customers").insert(new_customer_data).execute()
+        return result.data[0] if result.data else None
+        
+    except Exception as e:
+        # Log error but don't fail the entire operation
+        print(f"Error creating customer: {e}")
         return None
 
 async def get_clinic_working_hours(clinic_id: str) -> Dict:
@@ -170,7 +213,7 @@ def is_within_working_hours(dt: datetime.datetime, working_hours: Dict) -> Tuple
 
 def generate_time_slots(date: datetime.date, 
                        working_hours: Dict,
-                       slot_duration_minutes: int = DEFAULT_SLOT_DURATION,
+                       slot_duration_minutes: int,
                        tz: str = "America/Chicago") -> List[datetime.datetime]:
     """
     Generate all possible appointment slots for a given date within working hours.
@@ -604,22 +647,31 @@ async def check_availability(params):
     """Check if a time slot is free in Google Calendar with working hours validation."""
     service = get_service()
     user_input = params.get("time_input")
-    clinic_id = params.get("clinic_id")
-    customer_id = params.get("customer_id")
+    caller_phone = params.get("caller_phone")
+    called_phone = params.get("called_phone")
     calendar_id = params.get("calendar_id", "primary")
     tz = params.get("tz", "America/Chicago")
-    slot_duration = params.get("slot_duration_minutes", DEFAULT_SLOT_DURATION)
 
     if not user_input:
         return {"error": "time_input is required"}
     
-    if not clinic_id:
-        return {"error": "clinic_id is required"}
-
-    # Get clinic info and working hours from database
-    clinic_info = await get_clinic_by_id(clinic_id)
+    if not called_phone:
+        return {"error": "called_phone is required"}
+    
+    # Look up clinic by called phone number
+    clinic_info = await get_clinic_by_phone(called_phone)
     if not clinic_info:
-        return {"error": "Clinic not found"}
+        return {"error": f"No clinic found for phone number: {called_phone}"}
+    
+    clinic_id = clinic_info.get('clinic_id')
+    
+    # Get clinic-specific slot duration from database
+    slot_duration = await get_clinic_slot_duration(clinic_id)
+    
+    # Look up or create customer by caller phone number (if provided)
+    customer_info = None
+    if caller_phone:
+        customer_info = await get_or_create_customer_by_phone(caller_phone)
     
     # Get clinic-specific working hours, fallback to default
     working_hours = await get_clinic_working_hours(clinic_id)
@@ -686,22 +738,31 @@ async def get_available_slots(params):
     """Get all available appointment slots for a specified date."""
     service = get_service()
     date_input = params.get("date_input")
-    clinic_id = params.get("clinic_id")
-    customer_id = params.get("customer_id")
+    caller_phone = params.get("caller_phone")
+    called_phone = params.get("called_phone")
     calendar_id = params.get("calendar_id", "primary")
     tz = params.get("tz", "America/Chicago")
-    slot_duration = params.get("slot_duration_minutes", DEFAULT_SLOT_DURATION)
 
     if not date_input:
         return {"error": "date_input is required"}
     
-    if not clinic_id:
-        return {"error": "clinic_id is required"}
-
-    # Get clinic info and working hours from database
-    clinic_info = await get_clinic_by_id(clinic_id)
+    if not called_phone:
+        return {"error": "called_phone is required"}
+    
+    # Look up clinic by called phone number
+    clinic_info = await get_clinic_by_phone(called_phone)
     if not clinic_info:
-        return {"error": "Clinic not found"}
+        return {"error": f"No clinic found for phone number: {called_phone}"}
+    
+    clinic_id = clinic_info.get('clinic_id')
+    
+    # Get clinic-specific slot duration from database
+    slot_duration = await get_clinic_slot_duration(clinic_id)
+    
+    # Look up or create customer by caller phone number (if provided)
+    customer_info = None
+    if caller_phone:
+        customer_info = await get_or_create_customer_by_phone(caller_phone)
     
     # Get clinic-specific working hours
     working_hours = await get_clinic_working_hours(clinic_id)
@@ -808,8 +869,8 @@ async def create_appointment(params):
     service = get_service()
     time_input = params.get("time_input")
     name = params.get("name", "Unknown")
-    clinic_id = params.get("clinic_id")
-    customer_id = params.get("customer_id")
+    caller_phone = params.get("caller_phone")
+    called_phone = params.get("called_phone")
     calendar_id = params.get("calendar_id", "primary")
     tz = params.get("tz", "America/Chicago")
     description = params.get("description")
@@ -820,15 +881,20 @@ async def create_appointment(params):
     if not time_input:
         return {"error": "time_input is required"}
     
-    if not clinic_id:
-        return {"error": "clinic_id is required"}
-
-    # Get clinic and customer info from database
-    clinic_info = await get_clinic_by_id(clinic_id)
-    if not clinic_info:
-        return {"error": "Clinic not found"}
+    if not called_phone:
+        return {"error": "called_phone is required"}
     
-    customer_info = await get_customer_by_id(customer_id) if customer_id else None
+    # Look up clinic by called phone number
+    clinic_info = await get_clinic_by_phone(called_phone)
+    if not clinic_info:
+        return {"error": f"No clinic found for phone number: {called_phone}"}
+    
+    clinic_id = clinic_info.get('clinic_id')
+    
+    # Look up or create customer by caller phone number (if provided)
+    customer_info = None
+    if caller_phone:
+        customer_info = await get_or_create_customer_by_phone(caller_phone)
     working_hours = await get_clinic_working_hours(clinic_id)
     
     # Use clinic timezone if available
@@ -954,10 +1020,83 @@ async def create_appointment(params):
         return {"error": f"Error creating appointment: {str(e)}"}
 
 
+async def get_clinic_hours(params):
+    """Get clinic opening hours for a specific date from Supabase."""
+    caller_phone = params.get("caller_phone")
+    called_phone = params.get("called_phone")
+    date_input = params.get("date_input", "today")  # Default to today if not specified
+    
+    if not called_phone:
+        return {"error": "called_phone is required"}
+    
+    try:
+        # Look up clinic by called phone number
+        clinic_info = await get_clinic_by_phone(called_phone)
+        if not clinic_info:
+            return {"error": f"No clinic found for phone number: {called_phone}"}
+        
+        clinic_id = clinic_info.get('clinic_id')
+        
+        # Parse date input to get target day of week using normalise_time_input
+        try:
+            # Use the existing normalise_time_input function for consistent date parsing
+            normalized = normalise_time_input(date_input)
+            
+            # Extract the start datetime and convert to day of week
+            import datetime
+            target_date = datetime.datetime.fromisoformat(normalized["start"]["dateTime"])
+            
+            # Convert to day of week (0=Monday, 1=Tuesday... 6=Sunday)
+            target_day_of_week = target_date.weekday()
+            
+        except Exception as date_error:
+            return {"error": f"Could not parse date input '{date_input}': {str(date_error)}"}
+        
+        # Get specific day's hours from Supabase
+        supabase = init_supabase()
+        result = supabase.table("clinics_operating_hours").select("*").eq("clinic_id", clinic_id).eq("day_of_week", target_day_of_week).execute()
+        
+        if not result.data:
+            return {"error": f"No opening hours found for this day at clinic"}
+        
+        # Get the specific day's data
+        day_hours = result.data[0]  # Should only be one record per day per clinic
+        
+        # Format the opening hours for display
+        weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_name = weekday_names[day_hours['day_of_week']]
+        
+        if day_hours['is_closed']:
+            formatted_hours = f"{day_name}: Closed"
+        else:
+            open_time = day_hours['open_time'][:5] if day_hours['open_time'] else "N/A"  # Format HH:MM
+            close_time = day_hours['close_time'][:5] if day_hours['close_time'] else "N/A"
+            
+            if day_hours['break_start_time'] and day_hours['break_end_time']:
+                break_start = day_hours['break_start_time'][:5]
+                break_end = day_hours['break_end_time'][:5]
+                formatted_hours = f"{day_name}: {open_time}-{break_start}, {break_end}-{close_time}"
+            else:
+                formatted_hours = f"{day_name}: {open_time}-{close_time}"
+        
+        return {
+            "status": "success",
+            "requested_date": date_input,
+            "target_date": target_date.strftime("%Y-%m-%d"),
+            "day_of_week": target_day_of_week,
+            "opening_hours": formatted_hours,
+            "raw_data": day_hours
+        }
+        
+    except Exception as e:
+        return {"error": f"Error retrieving clinic hours: {str(e)}"}
+
+
 # ---------------- Function Map ---------------- #
 
 FUNCTION_MAP = {
     "check_availability": check_availability,
     "create_appointment": create_appointment,
     "get_available_slots": get_available_slots,
+    "get_clinic_hours": get_clinic_hours,
 }

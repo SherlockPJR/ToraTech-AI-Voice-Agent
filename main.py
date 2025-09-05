@@ -7,13 +7,17 @@ import time
 import logging
 from datetime import datetime
 from dotenv import load_dotenv
-from functions_google_calendar import FUNCTION_MAP
 import uuid
+from functions_google_calendar import FUNCTION_MAP
+
+from twilio.rest import Client
+from supabase import create_client, Client
+from typing import Optional, Dict, Tuple
 
 load_dotenv()
 
-# Logging setup
 logging.basicConfig(
+    # Logging setup
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
@@ -34,6 +38,8 @@ class ConversationLogger:
         self.current_session = {
             "session_id": str(uuid.uuid4()),
             "stream_sid": stream_sid,
+            "caller_phone": caller_phone,
+            "called_phone": called_phone,
             "start_time": datetime.now().isoformat(),
             "end_time": None,
             "messages": [],
@@ -127,6 +133,21 @@ class ConversationLogger:
         
         self.current_session = None
 
+# ---------------Supabase Initialisation---------------
+
+def init_supabase() -> Client:
+    # Initialize Supabase client
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+    
+    if not supabase_url:
+        raise Exception("SUPABASE_URL not found.")
+    
+    if not supabase_key:
+        raise Exception("SUPABASE_URL not found.")
+    
+    return create_client(supabase_url, supabase_key)
+
 # Global conversation logger instance
 conversation_logger = ConversationLogger()
 
@@ -139,6 +160,8 @@ def load_config():
         # Return minimal working config or re-raise
         raise Exception("config.json not found or invalid")
 
+# --------------- Deepgram Connection ---------------
+
 def sts_connect():
     # Connect to Deepgram STS websocket with retry logic
 
@@ -146,14 +169,14 @@ def sts_connect():
     # Realtime API with WebSocket: https://platform.openai.com/docs/guides/realtime-websocket?connection-example=python
     # Handling Audio with WebSockets: https://platform.openai.com/docs/guides/realtime-conversations#handling-audio-with-websockets
 
-    api_key = os.getenv("DEEPGRAM_API_KEY")
-    if not api_key:
+    deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
+    if not deepgram_api_key:
         raise Exception("DEEPGRAM_API_KEY not found")
     
     logger.info("Connecting to Deepgram STS...")
     sts_ws = websockets.connect(
         "wss://agent.deepgram.com/v1/agent/converse",
-        subprotocols=["token", api_key],
+        subprotocols=["token", deepgram_api_key],
         ping_interval=20,
         ping_timeout=10
     )
@@ -177,6 +200,8 @@ async def handle_barge_in(decoded, twilio_ws, streamsid):
         
         logger.info("Sent clear message for barge-in")
 
+# ---------------Function/Tool Calling---------------
+
 async def end_call_function(arguments):
     # Function to handle call termination requests
     conversation_logger.log_call_end_request()
@@ -187,6 +212,7 @@ async def end_call_function(arguments):
 
 async def execute_function_call(func_name, arguments):
     # Execute function call with logging and timing
+    global caller_phone, called_phone
     start_time = time.time()
     
     try:
@@ -198,6 +224,13 @@ async def execute_function_call(func_name, arguments):
             return result
         elif func_name in FUNCTION_MAP:
             logger.info(f"Executing function: {func_name} with args: {arguments}")
+
+            # Pass phone numbers to functions as part of the parameters
+            if called_phone:
+                arguments["called_phone"] = called_phone
+            if caller_phone:
+                arguments["caller_phone"] = caller_phone
+
             result = await FUNCTION_MAP[func_name](arguments)
             execution_time = time.time() - start_time
             
@@ -376,9 +409,47 @@ async def sts_receiver(sts_ws, twilio_ws, streamsid_queue):
     finally:
         logger.info("STS receiver stopped")
 
+# Global variables for call session
+caller_phone = None
+called_phone = None
+
+# ---------------Twilio---------------
+
+async def get_phone_numbers_from_call_sid(call_sid: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Get caller and called phone numbers from Twilio API using callSid.
+    Returns (caller_phone, called_phone) or (None, None) if failed.
+    """
+    try:
+        from twilio.rest import Client
+
+        # Use only the working credentials
+        account_sid = os.getenv('TWILIO_MAIN_ACCOUNT_SID')
+        auth_token = os.getenv('TWILIO_MAIN_ACCOUNT_AUTH_TOKEN')
+
+        if not account_sid or not auth_token:
+            logger.error('TWILIO_MAIN_ACCOUNT_SID and TWILIO_MAIN_ACCOUNT_AUTH_TOKEN required')
+            return None, None
+
+        # Initialize client and fetch call
+        client = Client(account_sid, auth_token)
+        call = client.calls(call_sid).fetch()
+
+        # Extract phone numbers (from test: from_ might be None, use from_formatted)
+        caller_phone = call.from_formatted
+        called_phone = call.to
+
+        logger.info(f'Retrieved from Twilio API: {caller_phone} -> {called_phone}')
+        return caller_phone, called_phone
+
+    except Exception as e:
+        logger.error(f'Failed to get phone numbers from Twilio API: {e}')
+        return None, None
+
 
 async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
     # Receive audio/media events from Twilio and queue them for STS
+    global caller_phone, called_phone
     BUFFER_SIZE = 20 * 160
     inbuffer = bytearray(b"")
     logger.info("Twilio receiver started")
@@ -391,11 +462,31 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                 
                 if event == "start":
                     # Get Twilio streamSid and start conversation logging
-                    start = data["start"]
-                    streamsid = start["streamSid"]
-                    streamsid_queue.put_nowait(streamsid)
+                    start_data = data["start"]
+                    streamsid = start_data["streamSid"]
                     
+                    # Get callSid and extract phone numbers from Twilio API
+                    call_sid = start_data.get("callSid")
+                    
+                    if call_sid:
+                        logger.info(f"Retrieving phone numbers for call: {call_sid}")
+                        caller_phone, called_phone = await get_phone_numbers_from_call_sid(call_sid)
+                    else:
+                        logger.warning("No callSid in start data")
+                        caller_phone, called_phone = None, None
+                    
+                    # Log phone numbers
+                    logger.info(f"Call from {caller_phone} to {called_phone}")
+                    
+                    # Store in conversation logger
                     conversation_logger.start_session(streamsid)
+                    # Add phone numbers to session data
+                    if conversation_logger.current_session:
+                        conversation_logger.current_session["caller_phone"] = caller_phone
+                        conversation_logger.current_session["called_phone"] = called_phone
+                        conversation_logger.current_session["agent_id"] = called_phone  # Use called number as agent ID
+                    
+                    streamsid_queue.put_nowait(streamsid)
                     logger.info(f"Call started - StreamSID: {streamsid}")
                     
                 elif event == "connected":
@@ -430,6 +521,7 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
         # Ensure session is closed even if error occurs
         conversation_logger.end_session()
         logger.info("Twilio receiver stopped")
+
 
 async def twilio_handler(twilio_ws):
     # Main Twilio connection handler (bridges Twilio and Deepgram)
