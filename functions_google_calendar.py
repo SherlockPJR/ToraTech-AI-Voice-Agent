@@ -7,11 +7,17 @@ import dateparser
 from zoneinfo import ZoneInfo
 from recurrent.event_parser import RecurringEvent
 from typing import Dict, Optional, Tuple, List
+from dotenv import load_dotenv
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
+
+from supabase import create_client, Client
+from typing import Optional, Dict
+
+load_dotenv()
 
 # Google Calendar API scopes
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
@@ -50,13 +56,88 @@ def get_credentials():
     return creds
 
 
+def init_supabase() -> Client:
+    # Initialize Supabase client
+    supabase_url = os.getenv("SUPABASE_URL")
+    supabase_key = os.getenv("SUPABASE_KEY")
+    
+    if not supabase_url:
+        raise Exception("SUPABASE_URL not found.")
+    
+    if not supabase_key:
+        raise Exception("SUPABASE_URL not found.")
+    
+    return create_client(supabase_url, supabase_key)
+
+async def get_clinic_by_id(clinic_id: str) -> Optional[Dict]:
+    """Get clinic information from Supabase by clinic_id"""
+    try:
+        supabase = init_supabase()
+        result = supabase.table("clinics").select("*").eq("clinic_id", clinic_id).execute()
+        return result.data[0] if result.data else None
+    except Exception:
+        return None
+
+async def get_customer_by_id(customer_id: str) -> Optional[Dict]:
+    """Get customer information from Supabase by customer_id"""
+    try:
+        supabase = init_supabase()
+        result = supabase.table("customers").select("*").eq("customer_id", customer_id).execute()
+        return result.data[0] if result.data else None
+    except Exception:
+        return None
+
+async def get_clinic_working_hours(clinic_id: str) -> Dict:
+    """Get clinic operating hours from Supabase"""
+    try:
+        supabase = init_supabase()
+        result = supabase.table("clinics_operating_hours").select("*").eq("clinic_id", clinic_id).execute()
+        
+        # Convert to the WORKING_HOURS format
+        working_hours = {}
+        for row in result.data:
+            day = row['day_of_week']
+            if row['is_closed']:
+                working_hours[day] = []
+            else:
+                # Convert time objects to (hour, minute, hour, minute) tuples
+                open_time = row['open_time']
+                close_time = row['close_time']
+                
+                if open_time and close_time:
+                    # Parse time strings like "10:00:00"
+                    open_h, open_m = map(int, open_time.split(':')[:2])
+                    close_h, close_m = map(int, close_time.split(':')[:2])
+                    
+                    # Handle break times if they exist
+                    time_slots = []
+                    if row['break_start_time'] and row['break_end_time']:
+                        break_start_h, break_start_m = map(int, row['break_start_time'].split(':')[:2])
+                        break_end_h, break_end_m = map(int, row['break_end_time'].split(':')[:2])
+                        
+                        # Split into before and after break
+                        time_slots.append((open_h, open_m, break_start_h, break_start_m))
+                        time_slots.append((break_end_h, break_end_m, close_h, close_m))
+                    else:
+                        time_slots.append((open_h, open_m, close_h, close_m))
+                    
+                    working_hours[day] = time_slots
+                else:
+                    working_hours[day] = []
+        
+        return working_hours
+    except Exception:
+        # Return default working hours if database query fails
+        return WORKING_HOURS
+
+
 def get_service():
     """Build a Google Calendar API service object."""
     creds = get_credentials()
     return build("calendar", "v3", credentials=creds)
 
 
-def is_within_working_hours(dt: datetime.datetime, working_hours: Dict = WORKING_HOURS) -> Tuple[bool, str]:
+def is_within_working_hours(dt: datetime.datetime, working_hours: Dict) -> Tuple[bool, str]:
     """
     Check if datetime falls within working hours.
     
@@ -88,9 +169,9 @@ def is_within_working_hours(dt: datetime.datetime, working_hours: Dict = WORKING
 
 
 def generate_time_slots(date: datetime.date, 
-                       working_hours: Dict = WORKING_HOURS,
+                       working_hours: Dict,
                        slot_duration_minutes: int = DEFAULT_SLOT_DURATION,
-                       tz: str = "Europe/London") -> List[datetime.datetime]:
+                       tz: str = "America/Chicago") -> List[datetime.datetime]:
     """
     Generate all possible appointment slots for a given date within working hours.
     
@@ -127,7 +208,7 @@ def generate_time_slots(date: datetime.date,
 
 
 def normalise_time_input(user_input: str,
-                        tz: str = "Europe/London",
+                        tz: str = "America/Chicago",
                         default_duration_minutes: int = 60,
                         now: Optional[datetime.datetime] = None) -> Dict:
     """
@@ -519,17 +600,37 @@ def normalise_time_input(user_input: str,
 
 # ---------------- Agent functions ---------------- #
 
-
 async def check_availability(params):
     """Check if a time slot is free in Google Calendar with working hours validation."""
     service = get_service()
     user_input = params.get("time_input")
+    clinic_id = params.get("clinic_id")
+    customer_id = params.get("customer_id")
     calendar_id = params.get("calendar_id", "primary")
-    tz = params.get("tz", "Europe/London")
+    tz = params.get("tz", "America/Chicago")
     slot_duration = params.get("slot_duration_minutes", DEFAULT_SLOT_DURATION)
 
     if not user_input:
         return {"error": "time_input is required"}
+    
+    if not clinic_id:
+        return {"error": "clinic_id is required"}
+
+    # Get clinic info and working hours from database
+    clinic_info = await get_clinic_by_id(clinic_id)
+    if not clinic_info:
+        return {"error": "Clinic not found"}
+    
+    # Get clinic-specific working hours, fallback to default
+    working_hours = await get_clinic_working_hours(clinic_id)
+    
+    # Use clinic timezone if available
+    if clinic_info.get('timezone'):
+        tz = clinic_info['timezone']
+    
+    # Use clinic calendar if available
+    if clinic_info.get('calendar_id'):
+        calendar_id = clinic_info['calendar_id']
 
     norm = normalise_time_input(user_input, tz)
     
@@ -540,13 +641,13 @@ async def check_availability(params):
     # Parse the start datetime for working hours validation
     start_dt = datetime.datetime.fromisoformat(norm["start"]["dateTime"])
     
-    # Validate working hours first
-    is_valid, hours_error = is_within_working_hours(start_dt)
+    # Validate working hours using clinic-specific hours
+    is_valid, hours_error = is_within_working_hours(start_dt, working_hours)
     if not is_valid:
         return {
             "status": "outside_hours", 
             "message": hours_error,
-            "working_hours": format_working_hours()
+            "working_hours": working_hours
         }
 
     # Calculate the actual end time based on slot duration
@@ -579,18 +680,39 @@ async def check_availability(params):
         
     except Exception as e:
         return {"error": f"Error checking calendar: {str(e)}"}
-
+    
 
 async def get_available_slots(params):
     """Get all available appointment slots for a specified date."""
     service = get_service()
     date_input = params.get("date_input")
+    clinic_id = params.get("clinic_id")
+    customer_id = params.get("customer_id")
     calendar_id = params.get("calendar_id", "primary")
-    tz = params.get("tz", "Europe/London")
+    tz = params.get("tz", "America/Chicago")
     slot_duration = params.get("slot_duration_minutes", DEFAULT_SLOT_DURATION)
 
     if not date_input:
         return {"error": "date_input is required"}
+    
+    if not clinic_id:
+        return {"error": "clinic_id is required"}
+
+    # Get clinic info and working hours from database
+    clinic_info = await get_clinic_by_id(clinic_id)
+    if not clinic_info:
+        return {"error": "Clinic not found"}
+    
+    # Get clinic-specific working hours
+    working_hours = await get_clinic_working_hours(clinic_id)
+    
+    # Use clinic timezone if available
+    if clinic_info.get('timezone'):
+        tz = clinic_info['timezone']
+    
+    # Use clinic calendar if available
+    if clinic_info.get('calendar_id'):
+        calendar_id = clinic_info['calendar_id']
 
     # Parse the date input
     try:
@@ -610,8 +732,8 @@ async def get_available_slots(params):
     except Exception as e:
         return {"error": f"Error parsing date: {str(e)}"}
 
-    # Generate all possible time slots for the date
-    time_slots = generate_time_slots(target_date, WORKING_HOURS, slot_duration, tz)
+    # Generate all possible time slots for the date using clinic-specific working hours
+    time_slots = generate_time_slots(target_date, working_hours, slot_duration, tz)
     
     if not time_slots:
         return {
@@ -674,20 +796,22 @@ async def get_available_slots(params):
             "day_name": day_name,
             "available_slots": available_slots,
             "total_slots": len(available_slots),
-            "working_hours": format_working_hours(target_date.weekday())
+            "working_hours": working_hours
         }
         
     except Exception as e:
         return {"error": f"Error checking calendar: {str(e)}"}
-
+    
 
 async def create_appointment(params):
     """Create a calendar event if the slot is free and within working hours."""
     service = get_service()
     time_input = params.get("time_input")
     name = params.get("name", "Unknown")
+    clinic_id = params.get("clinic_id")
+    customer_id = params.get("customer_id")
     calendar_id = params.get("calendar_id", "primary")
-    tz = params.get("tz", "Europe/London")
+    tz = params.get("tz", "America/Chicago")
     description = params.get("description")
     attendees = params.get("attendees", [])
     location = params.get("location")
@@ -695,6 +819,40 @@ async def create_appointment(params):
 
     if not time_input:
         return {"error": "time_input is required"}
+    
+    if not clinic_id:
+        return {"error": "clinic_id is required"}
+
+    # Get clinic and customer info from database
+    clinic_info = await get_clinic_by_id(clinic_id)
+    if not clinic_info:
+        return {"error": "Clinic not found"}
+    
+    customer_info = await get_customer_by_id(customer_id) if customer_id else None
+    working_hours = await get_clinic_working_hours(clinic_id)
+    
+    # Use clinic timezone if available
+    if clinic_info.get('timezone'):
+        tz = clinic_info['timezone']
+    
+    # Use clinic calendar if available
+    if clinic_info.get('calendar_id'):
+        calendar_id = clinic_info['calendar_id']
+    
+    # Use clinic location if not provided and available
+    if not location and clinic_info.get('address'):
+        location = clinic_info['address']
+
+    # Use customer info for event details if available
+    if customer_info:
+        first_name = customer_info.get('first_name', '')
+        last_name = customer_info.get('last_name', '')
+        if first_name or last_name:
+            name = f"{first_name} {last_name}".strip()
+        
+        # Add customer email to attendees if available
+        if customer_info.get('email') and customer_info['email'] not in attendees:
+            attendees.append(customer_info['email'])
 
     # Normalise time input
     if isinstance(time_input, str):
@@ -711,13 +869,13 @@ async def create_appointment(params):
     # Parse the start datetime for working hours validation
     start_dt = datetime.datetime.fromisoformat(norm["start"]["dateTime"])
     
-    # Validate working hours first
-    is_valid, hours_error = is_within_working_hours(start_dt)
+    # Validate working hours using clinic-specific hours
+    is_valid, hours_error = is_within_working_hours(start_dt, working_hours)
     if not is_valid:
         return {
             "status": "outside_hours", 
             "message": hours_error,
-            "working_hours": format_working_hours()
+            "working_hours": working_hours
         }
 
     # Check availability
@@ -726,74 +884,74 @@ async def create_appointment(params):
         "timeMax": norm["end"]["dateTime"],
         "items": [{"id": calendar_id}],
     }
-    freebusy = service.freebusy().query(body=body).execute()
-    busy_times = freebusy["calendars"][calendar_id]["busy"]
-
-    if busy_times:
-        return {"status": "conflict", "message": "Slot not available.", "busy": busy_times}
-
-    # Build event
-    event_body = {
-        "summary": f"Appointment with {name}",
-        "start": norm["start"],
-        "end": norm["end"],
-    }
-    if description:
-        event_body["description"] = description
-    if location:
-        event_body["location"] = location
-    if attendees:
-        event_body["attendees"] = [{"email": e} for e in attendees]
-
-    created = service.events().insert(
-        calendarId=calendar_id,
-        body=event_body,
-        sendUpdates=send_updates
-    ).execute()
-
-    return {
-        "status": "created",
-        "event": created,
-        "message": f"Appointment booked: {created.get('htmlLink')}"
-    }
-
-
-def format_working_hours(weekday: Optional[int] = None) -> Dict:
-    """Format working hours for human-readable display."""
-    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     
-    if weekday is not None:
-        # Format for a specific day
-        time_ranges = WORKING_HOURS.get(weekday, [])
-        day_name = weekday_names[weekday]
+    try:
+        freebusy = service.freebusy().query(body=body).execute()
+        busy_times = freebusy["calendars"][calendar_id]["busy"]
+
+        if busy_times:
+            return {"status": "conflict", "message": "Slot not available.", "busy": busy_times}
+
+        # Build event with clinic and customer info
+        event_summary = f"Appointment with {name}"
+        if clinic_info.get('clinic_name'):
+            event_summary = f"{clinic_info['clinic_name']} - Appointment with {name}"
         
-        if not time_ranges:
-            return {day_name: "Closed"}
+        event_body = {
+            "summary": event_summary,
+            "start": norm["start"],
+            "end": norm["end"],
+        }
         
-        formatted_ranges = []
-        for start_h, start_m, end_h, end_m in time_ranges:
-            start_str = f"{start_h}:{start_m:02d}" if start_m else f"{start_h}:00"
-            end_str = f"{end_h}:{end_m:02d}" if end_m else f"{end_h}:00"
-            formatted_ranges.append(f"{start_str}-{end_str}")
+        # Build description with clinic and customer details
+        event_description_parts = []
+        if description:
+            event_description_parts.append(description)
         
-        return {day_name: ", ".join(formatted_ranges)}
-    
-    # Format all days
-    formatted_hours = {}
-    for day_num, day_name in enumerate(weekday_names):
-        time_ranges = WORKING_HOURS.get(day_num, [])
+        if customer_info:
+            customer_details = []
+            if customer_info.get('phone_number'):
+                customer_details.append(f"Phone: {customer_info['phone_number']}")
+            if customer_info.get('email'):
+                customer_details.append(f"Email: {customer_info['email']}")
+            
+            if customer_details:
+                event_description_parts.append("Customer Details:\n" + "\n".join(customer_details))
         
-        if not time_ranges:
-            formatted_hours[day_name] = "Closed"
-        else:
-            formatted_ranges = []
-            for start_h, start_m, end_h, end_m in time_ranges:
-                start_str = f"{start_h}:{start_m:02d}" if start_m else f"{start_h}:00"
-                end_str = f"{end_h}:{end_m:02d}" if end_m else f"{end_h}:00"
-                formatted_ranges.append(f"{start_str}-{end_str}")
-            formatted_hours[day_name] = ", ".join(formatted_ranges)
-    
-    return formatted_hours
+        if clinic_info.get('phone_number'):
+            event_description_parts.append(f"Clinic Phone: {clinic_info['phone_number']}")
+        
+        if event_description_parts:
+            event_body["description"] = "\n\n".join(event_description_parts)
+        
+        if location:
+            event_body["location"] = location
+        
+        if attendees:
+            event_body["attendees"] = [{"email": e} for e in attendees]
+
+        # Create the calendar event
+        created = service.events().insert(
+            calendarId=calendar_id,
+            body=event_body,
+            sendUpdates=send_updates
+        ).execute()
+
+        return {
+            "status": "created",
+            "event": created,
+            "message": f"Appointment booked for {name}",
+            "event_link": created.get('htmlLink'),
+            "appointment_details": {
+                "customer_name": name,
+                "clinic_name": clinic_info.get('clinic_name', 'Unknown Clinic'),
+                "datetime": start_dt.isoformat(),
+                "duration_minutes": (datetime.datetime.fromisoformat(norm["end"]["dateTime"]) - start_dt).seconds // 60
+            }
+        }
+        
+    except Exception as e:
+        return {"error": f"Error creating appointment: {str(e)}"}
 
 
 # ---------------- Function Map ---------------- #
