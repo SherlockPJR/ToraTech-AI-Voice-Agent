@@ -9,6 +9,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 import uuid
 from functions_google_calendar import FUNCTION_MAP
+from clinic_cache import clinic_cache, customer_cache
 
 from twilio.rest import Client
 from supabase import create_client, Client
@@ -225,9 +226,30 @@ async def execute_function_call(func_name, arguments):
         elif func_name in FUNCTION_MAP:
             logger.info(f"Executing function: {func_name} with args: {arguments}")
 
-            # Pass phone numbers to functions as part of the parameters
+            # Pass phone numbers and day-specific clinic data to functions
             if called_phone:
                 arguments["called_phone"] = called_phone
+                
+                # Extract time input to determine target day and pass day-specific data
+                time_input = arguments.get("time_input") or arguments.get("date_input") or "today"
+                day_specific_data = clinic_cache.get_day_specific_data(called_phone, time_input)
+                
+                if day_specific_data:
+                    arguments["_clinic_data"] = day_specific_data
+                    target_day = day_specific_data['target_day_of_week']
+                    clinic_name = day_specific_data['clinic_name']
+                    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                    day_name = weekday_names[target_day]
+                    logger.debug(f"Passing {day_name} data for {clinic_name} to function {func_name} (day {target_day})")
+                else:
+                    # Fallback to full clinic data if day extraction fails
+                    clinic_data = clinic_cache.get_cached_data(called_phone)
+                    if clinic_data:
+                        arguments["_clinic_data"] = clinic_data
+                        logger.warning(f"Could not extract day from '{time_input}', passing full clinic data to {func_name}")
+                    else:
+                        logger.error(f"CRITICAL: No clinic data cached for {called_phone} - function {func_name} will fail")
+                    
             if caller_phone:
                 arguments["caller_phone"] = caller_phone
 
@@ -477,6 +499,19 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                     
                     # Log phone numbers
                     logger.info(f"Call from {caller_phone} to {called_phone}")
+                    
+                    # Initialize clinic cache for this call session
+                    if called_phone:
+                        try:
+                            logger.info(f"Initializing clinic cache for {called_phone}")
+                            clinic_data = await clinic_cache.load_clinic_data(called_phone)
+                            logger.info(f"Clinic cache loaded: {clinic_data['clinic_name']} (ID: {clinic_data['clinic_id']})")
+                        except Exception as e:
+                            logger.error(f"CRITICAL: Failed to load clinic cache for {called_phone}: {e}")
+                            # Could optionally terminate call here if clinic data is mandatory
+                            # For now, continue but functions will fail gracefully
+                    else:
+                        logger.warning("No called_phone available - clinic cache not initialized")
                     
                     # Store in conversation logger
                     conversation_logger.start_session(streamsid)

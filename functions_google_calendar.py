@@ -8,13 +8,13 @@ from typing import Dict, Optional, Tuple, List
 from dotenv import load_dotenv
 
 from time_parser import normalise_time_input
+from clinic_cache import customer_cache
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 
-from supabase import create_client, Client
 from typing import Optional, Dict
 
 load_dotenv()
@@ -22,21 +22,7 @@ load_dotenv()
 # Google Calendar API scopes
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
 
-async def get_clinic_slot_duration(clinic_id: str) -> int:
-    """Get clinic-specific slot duration from Supabase, fallback to 60 minutes"""
-    try:
-        supabase = init_supabase()
-        result = supabase.table("clinics_available_time_slots").select("slot_duration_minutes").eq("clinic_id", clinic_id).limit(1).execute()
-        
-        if result.data and result.data[0].get('slot_duration_minutes'):
-            return result.data[0]['slot_duration_minutes']
-        
-        # Fallback to default 60 minutes if not found
-        return 60
-        
-    except Exception:
-        # Fallback to default on error
-        return 60
+# REMOVED: get_clinic_slot_duration - data now comes from clinic cache
 
 def get_credentials():
     """Retrieve stored credentials or trigger OAuth flow if needed."""
@@ -56,110 +42,15 @@ def get_credentials():
             token.write(creds.to_json())
     return creds
 
-def init_supabase() -> Client:
-    # Initialize Supabase client
-    supabase_url = os.getenv("SUPABASE_URL")
-    supabase_key = os.getenv("SUPABASE_KEY")
-    
-    if not supabase_url:
-        raise Exception("SUPABASE_URL not found.")
-    
-    if not supabase_key:
-        raise Exception("SUPABASE_URL not found.")
-    
-    return create_client(supabase_url, supabase_key)
+# REMOVED: init_supabase - now handled by clinic_cache.py
 
-async def get_clinic_by_phone(phone_number: str) -> Optional[Dict]:
-    """Get clinic information from Supabase by voice_agent_phone_number"""
-    try:
-        supabase = init_supabase()
-        
-        # Use LIKE pattern to handle whitespace issues (like trailing newlines)
-        result = supabase.table("clinics").select("*").like("voice_agent_phone_number", f"%{phone_number}%").execute()
-        
-        # If that doesn't work, try exact match
-        if not result.data:
-            result = supabase.table("clinics").select("*").eq("voice_agent_phone_number", phone_number).execute()
-        
-        return result.data[0] if result.data else None
-    except Exception:
-        return None
+# REMOVED: get_clinic_by_phone - data now comes from clinic cache
 
-async def get_customer_by_phone(phone_number: str) -> Optional[Dict]:
-    """Get customer information from Supabase by phone_number"""
-    try:
-        supabase = init_supabase()
-        result = supabase.table("customers").select("*").eq("phone_number", phone_number).execute()
-        return result.data[0] if result.data else None
-    except Exception:
-        return None
+# REMOVED: get_customer_by_phone - now handled by customer_cache
 
-async def get_or_create_customer_by_phone(phone_number: str) -> Optional[Dict]:
-    """Get customer by phone, create if doesn't exist"""
-    try:
-        # First try to get existing customer
-        customer = await get_customer_by_phone(phone_number)
-        if customer:
-            return customer
-        
-        # Create new customer if not found
-        supabase = init_supabase()
-        new_customer_data = {
-            "phone_number": phone_number,
-            "created_at": datetime.now().isoformat()
-        }
-        
-        result = supabase.table("customers").insert(new_customer_data).execute()
-        return result.data[0] if result.data else None
-        
-    except Exception as e:
-        # Log error but don't fail the entire operation
-        print(f"Error creating customer: {e}")
-        return None
+# REMOVED: get_or_create_customer_by_phone - now handled by customer_cache
 
-async def get_clinic_working_hours(clinic_id: str) -> Dict:
-    """Get clinic operating hours from Supabase"""
-    try:
-        supabase = init_supabase()
-        result = supabase.table("clinics_operating_hours").select("*").eq("clinic_id", clinic_id).execute()
-        
-        # Convert to the working_hours format
-        working_hours = {}
-        for row in result.data:
-            day = row['day_of_week']
-            if row['is_closed']:
-                working_hours[day] = []
-            else:
-                # Convert time objects to (hour, minute, hour, minute) tuples
-                open_time = row['open_time']
-                close_time = row['close_time']
-                
-                if open_time and close_time:
-                    # Parse time strings like "10:00:00"
-                    open_h, open_m = map(int, open_time.split(':')[:2])
-                    close_h, close_m = map(int, close_time.split(':')[:2])
-                    
-                    # Handle break times if they exist
-                    time_slots = []
-                    if row['break_start_time'] and row['break_end_time']:
-                        break_start_h, break_start_m = map(int, row['break_start_time'].split(':')[:2])
-                        break_end_h, break_end_m = map(int, row['break_end_time'].split(':')[:2])
-                        
-                        # Split into before and after break
-                        time_slots.append((open_h, open_m, break_start_h, break_start_m))
-                        time_slots.append((break_end_h, break_end_m, close_h, close_m))
-                    else:
-                        time_slots.append((open_h, open_m, close_h, close_m))
-                    
-                    working_hours[day] = time_slots
-                else:
-                    working_hours[day] = []
-        
-        return working_hours
-    except Exception as e:
-        # Log error but don't fail the entire operation
-        print(f"Error getting clinics working hours: {e}")
-        return None
+# REMOVED: get_clinic_working_hours - data now comes from clinic cache
 
 
 def get_service():
@@ -168,15 +59,28 @@ def get_service():
     return build("calendar", "v3", credentials=creds)
 
 
-def is_within_working_hours(dt: datetime.datetime, working_hours: Dict) -> Tuple[bool, str]:
+def is_within_working_hours(dt: datetime.datetime, working_hours: Dict, target_day: int = None) -> Tuple[bool, str]:
     """
     Check if datetime falls within working hours.
+    
+    Args:
+        dt: datetime to check
+        working_hours: working hours dict (may be day-specific or full week)
+        target_day: specific day of week if working_hours is day-specific
     
     Returns:
         (is_valid, error_message)
     """
     weekday = dt.weekday()
-    time_ranges = working_hours.get(weekday, [])
+    
+    # Handle day-specific working hours (new format)
+    if target_day is not None and weekday in working_hours:
+        time_ranges = working_hours[weekday]
+    # Handle full week working hours (fallback)
+    elif weekday in working_hours:
+        time_ranges = working_hours[weekday]
+    else:
+        time_ranges = []
     
     if not time_ranges:
         weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
@@ -199,43 +103,102 @@ def is_within_working_hours(dt: datetime.datetime, working_hours: Dict) -> Tuple
     return False, f"Outside working hours. We are open: {', '.join(hours_str)}"
 
 
-def generate_time_slots(date: datetime.date, 
-                       working_hours: Dict,
-                       slot_duration_minutes: int,
-                       tz: str = "America/Chicago") -> List[datetime.datetime]:
+def get_predefined_slots_for_date(date: datetime.date, 
+                                  available_time_slots: List[Dict],
+                                  tz: str) -> List[datetime.datetime]:
     """
-    Generate all possible appointment slots for a given date within working hours.
+    Get predefined appointment slots from database for a specific date.
     
     Args:
-        date: The date to generate slots for
-        working_hours: Working hours configuration
-        slot_duration_minutes: Duration of each slot in minutes
+        date: The date to get slots for
+        available_time_slots: Predefined slots from clinics_available_time_slots table
         tz: Timezone string
         
     Returns:
-        List of datetime objects representing available time slots
+        List of datetime objects representing predefined time slots for this date
     """
     tzinfo = ZoneInfo(tz)
     slots = []
     
-    weekday = date.weekday()
-    time_ranges = working_hours.get(weekday, [])
+    weekday = date.weekday()  # 0=Monday, 6=Sunday
     
-    if not time_ranges:
-        return slots  # Closed day
+    # Filter slots for the specific day of week
+    for slot_record in available_time_slots:
+        if slot_record.get('day_of_week') == weekday and slot_record.get('is_active', True):
+            slot_time_str = slot_record.get('slot_time')
+            if slot_time_str:
+                try:
+                    # Parse time string like "10:00:00"
+                    hour, minute = map(int, slot_time_str.split(':')[:2])
+                    slot_datetime = datetime.datetime.combine(
+                        date, 
+                        datetime.time(hour, minute), 
+                        tzinfo
+                    )
+                    slots.append(slot_datetime)
+                except (ValueError, IndexError) as e:
+                    print(f"Warning: Invalid slot time format '{slot_time_str}': {e}")
+                    continue
     
-    for start_h, start_m, end_h, end_m in time_ranges:
-        # Create datetime objects for the start and end of this working period
-        period_start = datetime.datetime.combine(date, datetime.time(start_h, start_m), tzinfo)
-        period_end = datetime.datetime.combine(date, datetime.time(end_h, end_m), tzinfo)
+    return sorted(slots)  # Return sorted by time
+
+
+def validate_requested_time_against_slots(requested_dt: datetime.datetime, 
+                                        available_time_slots: List[Dict],
+                                        target_day: int = None) -> Tuple[bool, str]:
+    """
+    Validate that the requested appointment time matches a predefined slot.
+    
+    Args:
+        requested_dt: The requested appointment datetime
+        available_time_slots: Predefined slots from database (may be day-filtered)
+        target_day: specific day of week if slots are already filtered
         
-        # Generate slots within this period
-        current_slot = period_start
-        while current_slot + datetime.timedelta(minutes=slot_duration_minutes) <= period_end:
-            slots.append(current_slot)
-            current_slot += datetime.timedelta(minutes=slot_duration_minutes)
+    Returns:
+        (is_valid, error_message)
+    """
+    weekday = requested_dt.weekday()
+    requested_time = requested_dt.time()
     
-    return slots
+    # If slots are already day-filtered, check all slots. Otherwise filter by weekday
+    relevant_slots = available_time_slots
+    if target_day is None:
+        # Full week slots - filter by weekday
+        relevant_slots = [slot for slot in available_time_slots 
+                         if slot.get('day_of_week') == weekday and slot.get('is_active', True)]
+    
+    # Find matching slots for this time
+    for slot_record in relevant_slots:
+        slot_time_str = slot_record.get('slot_time')
+        if slot_time_str:
+            try:
+                hour, minute = map(int, slot_time_str.split(':')[:2])
+                slot_time = datetime.time(hour, minute)
+                
+                if requested_time == slot_time:
+                    return True, ""
+            except (ValueError, IndexError):
+                continue
+    
+    # If we get here, no matching slot was found
+    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    day_name = weekday_names[weekday]
+    
+    # Find available slots for this day to suggest alternatives
+    available_times = []
+    for slot_record in relevant_slots:
+        slot_time_str = slot_record.get('slot_time')
+        if slot_time_str:
+            try:
+                hour, minute = map(int, slot_time_str.split(':')[:2])
+                available_times.append(f"{hour:02d}:{minute:02d}")
+            except (ValueError, IndexError):
+                continue
+    
+    if available_times:
+        return False, f"Requested time not available. Available slots on {day_name}: {', '.join(sorted(available_times))}"
+    else:
+        return False, f"No appointment slots available on {day_name}s"
 
 
 
@@ -243,57 +206,67 @@ def generate_time_slots(date: datetime.date,
 # ---------------- Agent functions ---------------- #
 
 async def check_availability(params):
-    """Check if a time slot is free in Google Calendar with working hours validation."""
-    service = get_service()
+    """Check if a time slot is free in Google Calendar with predefined slot validation."""
+    
+    # Get cached clinic data
+    clinic_data = params.get("_clinic_data")
+    if not clinic_data:
+        error_msg = "CRITICAL: Clinic data not available in cache - check main.py initialization"
+        print(f"{error_msg}")
+        return {"error": error_msg}
+    
+    # Get required parameters
     user_input = params.get("time_input")
-    caller_phone = params.get("caller_phone")
-    called_phone = params.get("called_phone")
-    calendar_id = params.get("calendar_id", "primary")
-    tz = params.get("tz", "America/Chicago")
-
     if not user_input:
         return {"error": "time_input is required"}
     
-    if not called_phone:
-        return {"error": "called_phone is required"}
+    caller_phone = params.get("caller_phone")
     
-    # Look up clinic by called phone number
-    clinic_info = await get_clinic_by_phone(called_phone)
-    if not clinic_info:
-        return {"error": f"No clinic found for phone number: {called_phone}"}
+    # Use day-specific cached data
+    working_hours = clinic_data["working_hours"]
+    slot_duration = clinic_data["slot_duration_minutes"]
+    tz = clinic_data["timezone"]
+    calendar_id = clinic_data["calendar_id"]
+    clinic_name = clinic_data["clinic_name"]
+    target_day = clinic_data.get("target_day_of_week")
     
-    clinic_id = clinic_info.get('clinic_id')
+    if target_day is not None:
+        weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_name = weekday_names[target_day]
+        print(f"Using {day_name}-specific data for {clinic_name} - validating against {len(clinic_data['available_time_slots'])} predefined slots")
+    else:
+        print(f"Using cached data for {clinic_name} - validating against predefined slots")
     
-    # Get clinic-specific slot duration from database
-    slot_duration = await get_clinic_slot_duration(clinic_id)
-    
-    # Look up or create customer by caller phone number (if provided)
+    # Handle customer data if needed (uses customer cache)
     customer_info = None
     if caller_phone:
-        customer_info = await get_or_create_customer_by_phone(caller_phone)
-    
-    # Get clinic-specific working hours, fallback to default
-    working_hours = await get_clinic_working_hours(clinic_id)
-    
-    # Use clinic timezone if available
-    if clinic_info.get('timezone'):
-        tz = clinic_info['timezone']
-    
-    # Use clinic calendar if available
-    if clinic_info.get('calendar_id'):
-        calendar_id = clinic_info['calendar_id']
+        try:
+            customer_info = await customer_cache.get_or_create_customer(caller_phone)
+        except Exception as e:
+            print(f"Customer lookup failed for {caller_phone}: {e}")
+            # Continue without customer info - not critical for availability check
 
+    service = get_service()
     norm = normalise_time_input(user_input, tz)
     
     # Check if parsing failed
     if "error" in norm:
         return norm
 
-    # Parse the start datetime for working hours validation
+    # Parse the start datetime for validation
     start_dt = datetime.datetime.fromisoformat(norm["start"]["dateTime"])
     
-    # Validate working hours using clinic-specific hours
-    is_valid, hours_error = is_within_working_hours(start_dt, working_hours)
+    # Step 1: Validate against predefined database slots FIRST (day-specific)
+    available_slots = clinic_data["available_time_slots"]
+    slot_valid, slot_error = validate_requested_time_against_slots(start_dt, available_slots, target_day)
+    if not slot_valid:
+        return {
+            "status": "invalid_slot",
+            "message": slot_error
+        }
+    
+    # Step 2: Validate working hours (redundant check but kept for consistency)
+    is_valid, hours_error = is_within_working_hours(start_dt, working_hours, target_day)
     if not is_valid:
         return {
             "status": "outside_hours", 
@@ -335,44 +308,45 @@ async def check_availability(params):
 
 async def get_available_slots(params):
     """Get all available appointment slots for a specified date."""
-    service = get_service()
+    
+    # Get cached clinic data
+    clinic_data = params.get("_clinic_data")
+    if not clinic_data:
+        error_msg = "CRITICAL: Clinic data not available in cache - check main.py initialization"
+        print(f"{error_msg}")
+        return {"error": error_msg}
+    
+    # Get required parameters
     date_input = params.get("date_input")
-    caller_phone = params.get("caller_phone")
-    called_phone = params.get("called_phone")
-    calendar_id = params.get("calendar_id", "primary")
-    tz = params.get("tz", "America/Chicago")
-
     if not date_input:
         return {"error": "date_input is required"}
     
-    if not called_phone:
-        return {"error": "called_phone is required"}
+    caller_phone = params.get("caller_phone")
     
-    # Look up clinic by called phone number
-    clinic_info = await get_clinic_by_phone(called_phone)
-    if not clinic_info:
-        return {"error": f"No clinic found for phone number: {called_phone}"}
+    # Use day-specific cached data
+    working_hours = clinic_data["working_hours"]
+    slot_duration = clinic_data["slot_duration_minutes"]
+    tz = clinic_data["timezone"]
+    calendar_id = clinic_data["calendar_id"]
+    clinic_name = clinic_data["clinic_name"]
+    target_day = clinic_data.get("target_day_of_week")
     
-    clinic_id = clinic_info.get('clinic_id')
+    if target_day is not None:
+        weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_name = weekday_names[target_day]
+        print(f"Getting available slots for {clinic_name} on {date_input} ({day_name} - {len(clinic_data['available_time_slots'])} predefined slots)")
+    else:
+        print(f"Getting available slots for {clinic_name} on {date_input}")
     
-    # Get clinic-specific slot duration from database
-    slot_duration = await get_clinic_slot_duration(clinic_id)
-    
-    # Look up or create customer by caller phone number (if provided)
+    # Handle customer data if needed (uses customer cache)
     customer_info = None
     if caller_phone:
-        customer_info = await get_or_create_customer_by_phone(caller_phone)
-    
-    # Get clinic-specific working hours
-    working_hours = await get_clinic_working_hours(clinic_id)
-    
-    # Use clinic timezone if available
-    if clinic_info.get('timezone'):
-        tz = clinic_info['timezone']
-    
-    # Use clinic calendar if available
-    if clinic_info.get('calendar_id'):
-        calendar_id = clinic_info['calendar_id']
+        try:
+            customer_info = await customer_cache.get_or_create_customer(caller_phone)
+        except Exception as e:
+            print(f"Customer lookup failed for {caller_phone}: {e}")
+
+    service = get_service()
 
     # Parse the date input
     try:
@@ -392,13 +366,33 @@ async def get_available_slots(params):
     except Exception as e:
         return {"error": f"Error parsing date: {str(e)}"}
 
-    # Generate all possible time slots for the date using clinic-specific working hours
-    time_slots = generate_time_slots(target_date, working_hours, slot_duration, tz)
+    # Get predefined time slots for the date from database (already day-filtered if target_day exists)
+    available_slots_data = clinic_data["available_time_slots"]
+    
+    if target_day is not None and target_date.weekday() == target_day:
+        # Slots are already filtered for the target day
+        time_slots = []
+        tzinfo = ZoneInfo(tz)
+        for slot_record in available_slots_data:
+            slot_time_str = slot_record.get('slot_time')
+            if slot_time_str:
+                try:
+                    hour, minute = map(int, slot_time_str.split(':')[:2])
+                    slot_datetime = datetime.datetime.combine(target_date, datetime.time(hour, minute), tzinfo)
+                    time_slots.append(slot_datetime)
+                except (ValueError, IndexError) as e:
+                    print(f"Warning: Invalid slot time format '{slot_time_str}': {e}")
+        time_slots = sorted(time_slots)
+    else:
+        # Fallback to original method
+        time_slots = get_predefined_slots_for_date(target_date, available_slots_data, tz)
     
     if not time_slots:
+        weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_name = weekday_names[target_date.weekday()]
         return {
             "status": "closed",
-            "message": "We are closed on this day",
+            "message": f"No appointment slots available on {day_name}s",
             "available_slots": []
         }
 
@@ -465,48 +459,54 @@ async def get_available_slots(params):
 
 async def create_appointment(params):
     """Create a calendar event if the slot is free and within working hours."""
-    service = get_service()
+    
+    # Get cached clinic data
+    clinic_data = params.get("_clinic_data")
+    if not clinic_data:
+        error_msg = "CRITICAL: Clinic data not available in cache - check main.py initialization"
+        print(f"{error_msg}")
+        return {"error": error_msg}
+    
+    # Get required parameters
     time_input = params.get("time_input")
+    if not time_input:
+        return {"error": "time_input is required"}
+        
     name = params.get("name", "Unknown")
     caller_phone = params.get("caller_phone")
-    called_phone = params.get("called_phone")
-    calendar_id = params.get("calendar_id", "primary")
-    tz = params.get("tz", "America/Chicago")
     description = params.get("description")
     attendees = params.get("attendees", [])
     location = params.get("location")
     send_updates = params.get("send_updates", "none")
-
-    if not time_input:
-        return {"error": "time_input is required"}
     
-    if not called_phone:
-        return {"error": "called_phone is required"}
+    # Use day-specific cached data
+    working_hours = clinic_data["working_hours"]
+    slot_duration = clinic_data["slot_duration_minutes"]
+    tz = clinic_data["timezone"]
+    calendar_id = clinic_data["calendar_id"]
+    clinic_name = clinic_data["clinic_name"]
+    target_day = clinic_data.get("target_day_of_week")
     
-    # Look up clinic by called phone number
-    clinic_info = await get_clinic_by_phone(called_phone)
-    if not clinic_info:
-        return {"error": f"No clinic found for phone number: {called_phone}"}
+    # Use clinic location if not provided
+    if not location and clinic_data.get('address'):
+        location = clinic_data['address']
     
-    clinic_id = clinic_info.get('clinic_id')
+    if target_day is not None:
+        weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_name = weekday_names[target_day]
+        print(f"Creating {day_name} appointment for {name} at {clinic_name}")
+    else:
+        print(f"Creating appointment for {name} at {clinic_name}")
     
-    # Look up or create customer by caller phone number (if provided)
+    # Handle customer data (uses customer cache)
     customer_info = None
     if caller_phone:
-        customer_info = await get_or_create_customer_by_phone(caller_phone)
-    working_hours = await get_clinic_working_hours(clinic_id)
-    
-    # Use clinic timezone if available
-    if clinic_info.get('timezone'):
-        tz = clinic_info['timezone']
-    
-    # Use clinic calendar if available
-    if clinic_info.get('calendar_id'):
-        calendar_id = clinic_info['calendar_id']
-    
-    # Use clinic location if not provided and available
-    if not location and clinic_info.get('address'):
-        location = clinic_info['address']
+        try:
+            customer_info = await customer_cache.get_or_create_customer(caller_phone)
+        except Exception as e:
+            print(f"Customer lookup failed for {caller_phone}: {e}")
+
+    service = get_service()
 
     # Use customer info for event details if available
     if customer_info:
@@ -519,9 +519,9 @@ async def create_appointment(params):
         if customer_info.get('email') and customer_info['email'] not in attendees:
             attendees.append(customer_info['email'])
 
-    # Normalise time input
+    # Normalise time input using clinic-specific slot duration
     if isinstance(time_input, str):
-        norm = normalise_time_input(time_input, tz)
+        norm = normalise_time_input(time_input, tz, slot_duration)
     elif isinstance(time_input, dict):
         norm = time_input
     else:
@@ -531,11 +531,20 @@ async def create_appointment(params):
     if "error" in norm:
         return norm
 
-    # Parse the start datetime for working hours validation
+    # Parse the start datetime for validation
     start_dt = datetime.datetime.fromisoformat(norm["start"]["dateTime"])
     
-    # Validate working hours using clinic-specific hours
-    is_valid, hours_error = is_within_working_hours(start_dt, working_hours)
+    # Step 1: Validate against predefined database slots FIRST (day-specific)
+    available_slots = clinic_data["available_time_slots"]
+    slot_valid, slot_error = validate_requested_time_against_slots(start_dt, available_slots, target_day)
+    if not slot_valid:
+        return {
+            "status": "invalid_slot",
+            "message": slot_error
+        }
+    
+    # Step 2: Validate working hours (redundant check but kept for consistency)
+    is_valid, hours_error = is_within_working_hours(start_dt, working_hours, target_day)
     if not is_valid:
         return {
             "status": "outside_hours", 
@@ -559,8 +568,8 @@ async def create_appointment(params):
 
         # Build event with clinic and customer info
         event_summary = f"Appointment with {name}"
-        if clinic_info.get('clinic_name'):
-            event_summary = f"{clinic_info['clinic_name']} - Appointment with {name}"
+        if clinic_data.get('clinic_name'):
+            event_summary = f"{clinic_data['clinic_name']} - Appointment with {name}"
         
         event_body = {
             "summary": event_summary,
@@ -583,8 +592,8 @@ async def create_appointment(params):
             if customer_details:
                 event_description_parts.append("Customer Details:\n" + "\n".join(customer_details))
         
-        if clinic_info.get('phone_number'):
-            event_description_parts.append(f"Clinic Phone: {clinic_info['phone_number']}")
+        if clinic_data.get('phone_number'):
+            event_description_parts.append(f"Clinic Phone: {clinic_data['phone_number']}")
         
         if event_description_parts:
             event_body["description"] = "\n\n".join(event_description_parts)
@@ -609,7 +618,7 @@ async def create_appointment(params):
             "event_link": created.get('htmlLink'),
             "appointment_details": {
                 "customer_name": name,
-                "clinic_name": clinic_info.get('clinic_name', 'Unknown Clinic'),
+                "clinic_name": clinic_data.get('clinic_name', 'Unknown Clinic'),
                 "datetime": start_dt.isoformat(),
                 "duration_minutes": (datetime.datetime.fromisoformat(norm["end"]["dateTime"]) - start_dt).seconds // 60
             }
@@ -620,75 +629,83 @@ async def create_appointment(params):
 
 
 async def get_clinic_hours(params):
-    """Get clinic opening hours for a specific date from Supabase."""
-    caller_phone = params.get("caller_phone")
-    called_phone = params.get("called_phone")
-    date_input = params.get("date_input", "today")  # Default to today if not specified
+    """Get clinic opening hours for a specific date from cached data."""
     
-    if not called_phone:
-        return {"error": "called_phone is required"}
+    # MANDATORY: Get cached clinic data (NO DB CALLS)
+    clinic_data = params.get("_clinic_data")
+    if not clinic_data:
+        error_msg = "CRITICAL: Clinic data not available in cache - check main.py initialization"
+        print(f"{error_msg}")
+        return {"error": error_msg}
+    
+    date_input = params.get("date_input", "today")
+    clinic_name = clinic_data["clinic_name"]
+    target_day = clinic_data.get("target_day_of_week")
+    
+    if target_day is not None:
+        weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+        day_name = weekday_names[target_day]
+        print(f"Getting {day_name} clinic hours for {clinic_name} (day-specific data)")
+    else:
+        print(f"Getting clinic hours for {clinic_name} on {date_input}")
     
     try:
-        # Look up clinic by called phone number
-        clinic_info = await get_clinic_by_phone(called_phone)
-        if not clinic_info:
-            return {"error": f"No clinic found for phone number: {called_phone}"}
+        # Parse date input to get target day of week
+        normalized = normalise_time_input(date_input)
         
-        clinic_id = clinic_info.get('clinic_id')
+        # Extract the start datetime and convert to day of week
+        target_date = datetime.datetime.fromisoformat(normalized["start"]["dateTime"])
         
-        # Parse date input to get target day of week using normalise_time_input
-        try:
-            # Use the existing normalise_time_input function for consistent date parsing
-            normalized = normalise_time_input(date_input)
+        # Convert to day of week (0=Monday, 1=Tuesday... 6=Sunday)
+        target_day_of_week = target_date.weekday()
             
-            # Extract the start datetime and convert to day of week
-            import datetime
-            target_date = datetime.datetime.fromisoformat(normalized["start"]["dateTime"])
-            
-            # Convert to day of week (0=Monday, 1=Tuesday... 6=Sunday)
-            target_day_of_week = target_date.weekday()
-            
-        except Exception as date_error:
-            return {"error": f"Could not parse date input '{date_input}': {str(date_error)}"}
+    except Exception as date_error:
+        return {"error": f"Could not parse date input '{date_input}': {str(date_error)}"}
+    
+    # Get specific day's hours from cached data (may already be day-filtered)
+    raw_operating_hours = clinic_data["raw_operating_hours"]
+    
+    if target_day is not None and len(raw_operating_hours) == 1:
+        # Day-specific data - use the single record
+        day_hours = raw_operating_hours[0]
+        if day_hours['day_of_week'] != target_day_of_week:
+            print(f"Warning: Day mismatch - cached data for day {day_hours['day_of_week']}, requested day {target_day_of_week}")
+    else:
+        # Full week data - find the specific day's data
+        day_hours = None
+        for hour_record in raw_operating_hours:
+            if hour_record['day_of_week'] == target_day_of_week:
+                day_hours = hour_record
+                break
+    
+    if not day_hours:
+        return {"error": f"No opening hours found for day {target_day_of_week} at {clinic_name}"}
+    
+    # Format the opening hours for display
+    weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    day_name = weekday_names[day_hours['day_of_week']]
+    
+    if day_hours['is_closed']:
+        formatted_hours = f"{day_name}: Closed"
+    else:
+        open_time = day_hours['open_time'][:5] if day_hours['open_time'] else "N/A"  # Format HH:MM
+        close_time = day_hours['close_time'][:5] if day_hours['close_time'] else "N/A"
         
-        # Get specific day's hours from Supabase
-        supabase = init_supabase()
-        result = supabase.table("clinics_operating_hours").select("*").eq("clinic_id", clinic_id).eq("day_of_week", target_day_of_week).execute()
-        
-        if not result.data:
-            return {"error": f"No opening hours found for this day at clinic"}
-        
-        # Get the specific day's data
-        day_hours = result.data[0]  # Should only be one record per day per clinic
-        
-        # Format the opening hours for display
-        weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-        day_name = weekday_names[day_hours['day_of_week']]
-        
-        if day_hours['is_closed']:
-            formatted_hours = f"{day_name}: Closed"
+        if day_hours['break_start_time'] and day_hours['break_end_time']:
+            break_start = day_hours['break_start_time'][:5]
+            break_end = day_hours['break_end_time'][:5]
+            formatted_hours = f"{day_name}: {open_time}-{break_start}, {break_end}-{close_time}"
         else:
-            open_time = day_hours['open_time'][:5] if day_hours['open_time'] else "N/A"  # Format HH:MM
-            close_time = day_hours['close_time'][:5] if day_hours['close_time'] else "N/A"
-            
-            if day_hours['break_start_time'] and day_hours['break_end_time']:
-                break_start = day_hours['break_start_time'][:5]
-                break_end = day_hours['break_end_time'][:5]
-                formatted_hours = f"{day_name}: {open_time}-{break_start}, {break_end}-{close_time}"
-            else:
-                formatted_hours = f"{day_name}: {open_time}-{close_time}"
-        
-        return {
-            "status": "success",
-            "requested_date": date_input,
-            "target_date": target_date.strftime("%Y-%m-%d"),
-            "day_of_week": target_day_of_week,
-            "opening_hours": formatted_hours,
-            "raw_data": day_hours
-        }
-        
-    except Exception as e:
-        return {"error": f"Error retrieving clinic hours: {str(e)}"}
+            formatted_hours = f"{day_name}: {open_time}-{close_time}"
+    
+    return {
+        "status": "success",
+        "requested_date": date_input,
+        "target_date": target_date.strftime("%Y-%m-%d"),
+        "day_of_week": target_day_of_week,
+        "opening_hours": formatted_hours,
+        "raw_data": day_hours
+    }
 
 
 # ---------------- Function Map ---------------- #
