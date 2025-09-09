@@ -19,10 +19,10 @@ from typing import Optional, Dict
 
 load_dotenv()
 
+"""Google Calendar integration with appointment booking and slot management."""
+
 # Google Calendar API scopes
 SCOPES = ["https://www.googleapis.com/auth/calendar"]
-
-# REMOVED: get_clinic_slot_duration - data now comes from clinic cache
 
 def get_credentials():
     """Retrieve stored credentials or trigger OAuth flow if needed."""
@@ -42,16 +42,6 @@ def get_credentials():
             token.write(creds.to_json())
     return creds
 
-# REMOVED: init_supabase - now handled by clinic_cache.py
-
-# REMOVED: get_clinic_by_phone - data now comes from clinic cache
-
-# REMOVED: get_customer_by_phone - now handled by customer_cache
-
-# REMOVED: get_or_create_customer_by_phone - now handled by customer_cache
-
-# REMOVED: get_clinic_working_hours - data now comes from clinic cache
-
 
 def get_service():
     """Build a Google Calendar API service object."""
@@ -60,23 +50,13 @@ def get_service():
 
 
 def is_within_working_hours(dt: datetime.datetime, working_hours: Dict, target_day: int = None) -> Tuple[bool, str]:
-    """
-    Check if datetime falls within working hours.
-    
-    Args:
-        dt: datetime to check
-        working_hours: working hours dict (may be day-specific or full week)
-        target_day: specific day of week if working_hours is day-specific
-    
-    Returns:
-        (is_valid, error_message)
-    """
+    """Validate datetime against clinic operating hours with break time handling."""
     weekday = dt.weekday()
     
-    # Handle day-specific working hours (new format)
+    # Use day-specific hours if available
     if target_day is not None and weekday in working_hours:
         time_ranges = working_hours[weekday]
-    # Handle full week working hours (fallback)
+    # Fall back to full week format
     elif weekday in working_hours:
         time_ranges = working_hours[weekday]
     else:
@@ -93,7 +73,7 @@ def is_within_working_hours(dt: datetime.datetime, working_hours: Dict, target_d
         if start_time <= dt_time < end_time:  # Use < for end_time to avoid overlap
             return True, ""
     
-    # Format working hours for error message
+    # Build readable hours format for error message
     hours_str = []
     for start_h, start_m, end_h, end_m in time_ranges:
         start_str = f"{start_h}:{start_m:02d}" if start_m else str(start_h)
@@ -106,29 +86,19 @@ def is_within_working_hours(dt: datetime.datetime, working_hours: Dict, target_d
 def get_predefined_slots_for_date(date: datetime.date, 
                                   available_time_slots: List[Dict],
                                   tz: str) -> List[datetime.datetime]:
-    """
-    Get predefined appointment slots from database for a specific date.
-    
-    Args:
-        date: The date to get slots for
-        available_time_slots: Predefined slots from clinics_available_time_slots table
-        tz: Timezone string
-        
-    Returns:
-        List of datetime objects representing predefined time slots for this date
-    """
+    """Extract predefined appointment slots from database for specific date."""
     tzinfo = ZoneInfo(tz)
     slots = []
     
     weekday = date.weekday()  # 0=Monday, 6=Sunday
     
-    # Filter slots for the specific day of week
+    # Extract slots matching target day of week
     for slot_record in available_time_slots:
         if slot_record.get('day_of_week') == weekday and slot_record.get('is_active', True):
             slot_time_str = slot_record.get('slot_time')
             if slot_time_str:
                 try:
-                    # Parse time string like "10:00:00"
+                    # Convert time string to datetime object
                     hour, minute = map(int, slot_time_str.split(':')[:2])
                     slot_datetime = datetime.datetime.combine(
                         date, 
@@ -140,34 +110,24 @@ def get_predefined_slots_for_date(date: datetime.date,
                     print(f"Warning: Invalid slot time format '{slot_time_str}': {e}")
                     continue
     
-    return sorted(slots)  # Return sorted by time
+    return sorted(slots)
 
 
 def validate_requested_time_against_slots(requested_dt: datetime.datetime, 
                                         available_time_slots: List[Dict],
                                         target_day: int = None) -> Tuple[bool, str]:
-    """
-    Validate that the requested appointment time matches a predefined slot.
-    
-    Args:
-        requested_dt: The requested appointment datetime
-        available_time_slots: Predefined slots from database (may be day-filtered)
-        target_day: specific day of week if slots are already filtered
-        
-    Returns:
-        (is_valid, error_message)
-    """
+    """Check if requested time matches available predefined appointment slots."""
     weekday = requested_dt.weekday()
     requested_time = requested_dt.time()
     
-    # If slots are already day-filtered, check all slots. Otherwise filter by weekday
+    # Filter slots by weekday if needed
     relevant_slots = available_time_slots
     if target_day is None:
-        # Full week slots - filter by weekday
+        # Filter by weekday for full week data
         relevant_slots = [slot for slot in available_time_slots 
                          if slot.get('day_of_week') == weekday and slot.get('is_active', True)]
     
-    # Find matching slots for this time
+    # Search for exact time match in available slots
     for slot_record in relevant_slots:
         slot_time_str = slot_record.get('slot_time')
         if slot_time_str:
@@ -180,11 +140,11 @@ def validate_requested_time_against_slots(requested_dt: datetime.datetime,
             except (ValueError, IndexError):
                 continue
     
-    # If we get here, no matching slot was found
+    # No matching slot found - build error message with alternatives
     weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     day_name = weekday_names[weekday]
     
-    # Find available slots for this day to suggest alternatives
+    # Extract available times for suggestions
     available_times = []
     for slot_record in relevant_slots:
         slot_time_str = slot_record.get('slot_time')
@@ -206,23 +166,23 @@ def validate_requested_time_against_slots(requested_dt: datetime.datetime,
 # ---------------- Agent functions ---------------- #
 
 async def check_availability(params):
-    """Check if a time slot is free in Google Calendar with predefined slot validation."""
+    """Validate appointment slot against database and Google Calendar availability."""
     
-    # Get cached clinic data
+    # Retrieve clinic configuration from cache
     clinic_data = params.get("_clinic_data")
     if not clinic_data:
         error_msg = "CRITICAL: Clinic data not available in cache - check main.py initialization"
         print(f"{error_msg}")
         return {"error": error_msg}
     
-    # Get required parameters
+    # Extract required parameters
     user_input = params.get("time_input")
     if not user_input:
         return {"error": "time_input is required"}
     
     caller_phone = params.get("caller_phone")
     
-    # Use day-specific cached data
+    # Extract day-specific clinic configuration
     working_hours = clinic_data["working_hours"]
     slot_duration = clinic_data["slot_duration_minutes"]
     tz = clinic_data["timezone"]
@@ -237,26 +197,26 @@ async def check_availability(params):
     else:
         print(f"Using cached data for {clinic_name} - validating against predefined slots")
     
-    # Handle customer data if needed (uses customer cache)
+    # Lookup customer info for session context
     customer_info = None
     if caller_phone:
         try:
             customer_info = await customer_cache.get_or_create_customer(caller_phone)
         except Exception as e:
             print(f"Customer lookup failed for {caller_phone}: {e}")
-            # Continue without customer info - not critical for availability check
+            # Continue without customer data
 
     service = get_service()
     norm = normalise_time_input(user_input, tz)
     
-    # Check if parsing failed
+    # Handle time parsing errors
     if "error" in norm:
         return norm
 
-    # Parse the start datetime for validation
+    # Extract datetime for validation
     start_dt = datetime.datetime.fromisoformat(norm["start"]["dateTime"])
     
-    # Step 1: Validate against predefined database slots FIRST (day-specific)
+    # Primary validation: check against predefined appointment slots
     available_slots = clinic_data["available_time_slots"]
     slot_valid, slot_error = validate_requested_time_against_slots(start_dt, available_slots, target_day)
     if not slot_valid:
@@ -265,7 +225,7 @@ async def check_availability(params):
             "message": slot_error
         }
     
-    # Step 2: Validate working hours (redundant check but kept for consistency)
+    # Secondary validation: verify working hours compliance
     is_valid, hours_error = is_within_working_hours(start_dt, working_hours, target_day)
     if not is_valid:
         return {
@@ -274,10 +234,10 @@ async def check_availability(params):
             "working_hours": working_hours
         }
 
-    # Calculate the actual end time based on slot duration
+    # Calculate appointment end time using clinic slot duration
     slot_end_dt = start_dt + datetime.timedelta(minutes=slot_duration)
     
-    # Check Google Calendar availability for the full slot duration
+    # Query Google Calendar for conflicts during appointment window
     body = {
         "timeMin": start_dt.isoformat(),
         "timeMax": slot_end_dt.isoformat(),
@@ -291,12 +251,12 @@ async def check_availability(params):
         if not busy_times:
             return {"status": "available", "message": "Yes, available."}
         
-        # Check for conflicts with proper overlap detection
+        # Detect scheduling conflicts with existing events
         for busy in busy_times:
             busy_start = datetime.datetime.fromisoformat(busy["start"])
             busy_end = datetime.datetime.fromisoformat(busy["end"])
             
-            # Check if the requested slot overlaps with any busy period
+            # Test for time overlap with busy periods
             if (start_dt < busy_end and slot_end_dt > busy_start):
                 return {"status": "busy", "message": "Not available.", "busy": busy_times}
         
@@ -307,23 +267,23 @@ async def check_availability(params):
     
 
 async def get_available_slots(params):
-    """Get all available appointment slots for a specified date."""
+    """Return all free appointment slots for a specific date after checking calendar conflicts."""
     
-    # Get cached clinic data
+    # Retrieve clinic configuration from cache
     clinic_data = params.get("_clinic_data")
     if not clinic_data:
         error_msg = "CRITICAL: Clinic data not available in cache - check main.py initialization"
         print(f"{error_msg}")
         return {"error": error_msg}
     
-    # Get required parameters
+    # Extract required parameters
     date_input = params.get("date_input")
     if not date_input:
         return {"error": "date_input is required"}
     
     caller_phone = params.get("caller_phone")
     
-    # Use day-specific cached data
+    # Extract day-specific clinic configuration
     working_hours = clinic_data["working_hours"]
     slot_duration = clinic_data["slot_duration_minutes"]
     tz = clinic_data["timezone"]
@@ -338,7 +298,7 @@ async def get_available_slots(params):
     else:
         print(f"Getting available slots for {clinic_name} on {date_input}")
     
-    # Handle customer data if needed (uses customer cache)
+    # Lookup customer info for session context
     customer_info = None
     if caller_phone:
         try:
@@ -348,10 +308,10 @@ async def get_available_slots(params):
 
     service = get_service()
 
-    # Parse the date input
+    # Parse target date string
     try:
         if isinstance(date_input, str):
-            # Try to parse the date
+            # Parse natural language date input
             parsed_date = dateparser.parse(date_input, settings={
                 "TIMEZONE": tz,
                 "RETURN_AS_TIMEZONE_AWARE": True,
@@ -366,11 +326,11 @@ async def get_available_slots(params):
     except Exception as e:
         return {"error": f"Error parsing date: {str(e)}"}
 
-    # Get predefined time slots for the date from database (already day-filtered if target_day exists)
+    # Extract predefined slots for target date
     available_slots_data = clinic_data["available_time_slots"]
     
     if target_day is not None and target_date.weekday() == target_day:
-        # Slots are already filtered for the target day
+        # Use day-specific slots
         time_slots = []
         tzinfo = ZoneInfo(tz)
         for slot_record in available_slots_data:
@@ -384,7 +344,7 @@ async def get_available_slots(params):
                     print(f"Warning: Invalid slot time format '{slot_time_str}': {e}")
         time_slots = sorted(time_slots)
     else:
-        # Fallback to original method
+        # Use full week slot filtering
         time_slots = get_predefined_slots_for_date(target_date, available_slots_data, tz)
     
     if not time_slots:
@@ -396,11 +356,11 @@ async def get_available_slots(params):
             "available_slots": []
         }
 
-    # Check each slot against Google Calendar
+    # Query Google Calendar for day's conflicts
     tzinfo = ZoneInfo(tz)
     available_slots = []
     
-    # Batch the freebusy query for efficiency
+    # Single query for entire day's calendar data
     day_start = datetime.datetime.combine(target_date, datetime.time.min, tzinfo)
     day_end = datetime.datetime.combine(target_date, datetime.time.max, tzinfo)
     
@@ -414,21 +374,21 @@ async def get_available_slots(params):
         freebusy = service.freebusy().query(body=body).execute()
         busy_times = freebusy["calendars"][calendar_id]["busy"]
         
-        # Convert busy times to datetime objects for comparison
+        # Parse busy periods for overlap detection
         busy_periods = []
         for busy in busy_times:
             start = datetime.datetime.fromisoformat(busy["start"])
             end = datetime.datetime.fromisoformat(busy["end"])
             busy_periods.append((start, end))
         
-        # Check each time slot
+        # Test each predefined slot against calendar
         for slot in time_slots:
             slot_end = slot + datetime.timedelta(minutes=slot_duration)
             
-            # Check if this slot conflicts with any busy period
+            # Test for scheduling conflicts
             is_free = True
             for busy_start, busy_end in busy_periods:
-                # Check for overlap
+                # Detect time overlap with busy period
                 if (slot < busy_end and slot_end > busy_start):
                     is_free = False
                     break
@@ -440,7 +400,7 @@ async def get_available_slots(params):
                     "duration_minutes": slot_duration
                 })
         
-        # Format response
+        # Build response with available slots
         weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
         day_name = weekday_names[target_date.weekday()]
         
@@ -458,16 +418,16 @@ async def get_available_slots(params):
     
 
 async def create_appointment(params):
-    """Create a calendar event if the slot is free and within working hours."""
+    """Create Google Calendar appointment after validating slot and gathering customer data."""
     
-    # Get cached clinic data
+    # Retrieve clinic configuration from cache
     clinic_data = params.get("_clinic_data")
     if not clinic_data:
         error_msg = "CRITICAL: Clinic data not available in cache - check main.py initialization"
         print(f"{error_msg}")
         return {"error": error_msg}
     
-    # Get required parameters
+    # Extract required parameters
     time_input = params.get("time_input")
     if not time_input:
         return {"error": "time_input is required"}
@@ -479,7 +439,7 @@ async def create_appointment(params):
     location = params.get("location")
     send_updates = params.get("send_updates", "none")
     
-    # Use day-specific cached data
+    # Extract day-specific clinic configuration
     working_hours = clinic_data["working_hours"]
     slot_duration = clinic_data["slot_duration_minutes"]
     tz = clinic_data["timezone"]
@@ -498,7 +458,7 @@ async def create_appointment(params):
     else:
         print(f"Creating appointment for {name} at {clinic_name}")
     
-    # Handle customer data (uses customer cache)
+    # Lookup/create customer record
     customer_info = None
     if caller_phone:
         try:
@@ -508,18 +468,18 @@ async def create_appointment(params):
 
     service = get_service()
 
-    # Use customer info for event details if available
+    # Populate event with customer information
     if customer_info:
         first_name = customer_info.get('first_name', '')
         last_name = customer_info.get('last_name', '')
         if first_name or last_name:
             name = f"{first_name} {last_name}".strip()
         
-        # Add customer email to attendees if available
+        # Include customer email in invitations
         if customer_info.get('email') and customer_info['email'] not in attendees:
             attendees.append(customer_info['email'])
 
-    # Normalise time input using clinic-specific slot duration
+    # Parse time input with clinic's slot duration
     if isinstance(time_input, str):
         norm = normalise_time_input(time_input, tz, slot_duration)
     elif isinstance(time_input, dict):
@@ -527,14 +487,14 @@ async def create_appointment(params):
     else:
         return {"error": "time_input must be str or normalised dict"}
 
-    # Check if parsing failed
+    # Handle time parsing errors
     if "error" in norm:
         return norm
 
-    # Parse the start datetime for validation
+    # Extract datetime for validation
     start_dt = datetime.datetime.fromisoformat(norm["start"]["dateTime"])
     
-    # Step 1: Validate against predefined database slots FIRST (day-specific)
+    # Primary validation: check against predefined appointment slots
     available_slots = clinic_data["available_time_slots"]
     slot_valid, slot_error = validate_requested_time_against_slots(start_dt, available_slots, target_day)
     if not slot_valid:
@@ -543,7 +503,7 @@ async def create_appointment(params):
             "message": slot_error
         }
     
-    # Step 2: Validate working hours (redundant check but kept for consistency)
+    # Secondary validation: verify working hours compliance
     is_valid, hours_error = is_within_working_hours(start_dt, working_hours, target_day)
     if not is_valid:
         return {
@@ -552,7 +512,7 @@ async def create_appointment(params):
             "working_hours": working_hours
         }
 
-    # Check availability
+    # Query Google Calendar for conflicts
     body = {
         "timeMin": norm["start"]["dateTime"],
         "timeMax": norm["end"]["dateTime"],
@@ -566,7 +526,7 @@ async def create_appointment(params):
         if busy_times:
             return {"status": "conflict", "message": "Slot not available.", "busy": busy_times}
 
-        # Build event with clinic and customer info
+        # Construct calendar event with all details
         event_summary = f"Appointment with {name}"
         if clinic_data.get('clinic_name'):
             event_summary = f"{clinic_data['clinic_name']} - Appointment with {name}"
@@ -577,7 +537,7 @@ async def create_appointment(params):
             "end": norm["end"],
         }
         
-        # Build description with clinic and customer details
+        # Format event description with contact information
         event_description_parts = []
         if description:
             event_description_parts.append(description)
@@ -604,7 +564,7 @@ async def create_appointment(params):
         if attendees:
             event_body["attendees"] = [{"email": e} for e in attendees]
 
-        # Create the calendar event
+        # Insert event into Google Calendar
         created = service.events().insert(
             calendarId=calendar_id,
             body=event_body,
@@ -629,9 +589,9 @@ async def create_appointment(params):
 
 
 async def get_clinic_hours(params):
-    """Get clinic opening hours for a specific date from cached data."""
+    """Return formatted clinic operating hours for specified date using cached data."""
     
-    # MANDATORY: Get cached clinic data (NO DB CALLS)
+    # Retrieve clinic configuration from cache (no database queries)
     clinic_data = params.get("_clinic_data")
     if not clinic_data:
         error_msg = "CRITICAL: Clinic data not available in cache - check main.py initialization"
@@ -650,28 +610,28 @@ async def get_clinic_hours(params):
         print(f"Getting clinic hours for {clinic_name} on {date_input}")
     
     try:
-        # Parse date input to get target day of week
+        # Extract target day of week from date input
         normalized = normalise_time_input(date_input)
         
-        # Extract the start datetime and convert to day of week
+        # Parse datetime and extract weekday
         target_date = datetime.datetime.fromisoformat(normalized["start"]["dateTime"])
         
-        # Convert to day of week (0=Monday, 1=Tuesday... 6=Sunday)
+        # Convert to weekday index
         target_day_of_week = target_date.weekday()
             
     except Exception as date_error:
         return {"error": f"Could not parse date input '{date_input}': {str(date_error)}"}
     
-    # Get specific day's hours from cached data (may already be day-filtered)
+    # Extract operating hours for target day
     raw_operating_hours = clinic_data["raw_operating_hours"]
     
     if target_day is not None and len(raw_operating_hours) == 1:
-        # Day-specific data - use the single record
+        # Use pre-filtered day data
         day_hours = raw_operating_hours[0]
         if day_hours['day_of_week'] != target_day_of_week:
             print(f"Warning: Day mismatch - cached data for day {day_hours['day_of_week']}, requested day {target_day_of_week}")
     else:
-        # Full week data - find the specific day's data
+        # Search full week data for target day
         day_hours = None
         for hour_record in raw_operating_hours:
             if hour_record['day_of_week'] == target_day_of_week:
@@ -681,7 +641,7 @@ async def get_clinic_hours(params):
     if not day_hours:
         return {"error": f"No opening hours found for day {target_day_of_week} at {clinic_name}"}
     
-    # Format the opening hours for display
+    # Build readable hours format
     weekday_names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
     day_name = weekday_names[day_hours['day_of_week']]
     
@@ -708,7 +668,7 @@ async def get_clinic_hours(params):
     }
 
 
-# ---------------- Function Map ---------------- #
+# Function registry for agent execution
 
 FUNCTION_MAP = {
     "check_availability": check_availability,

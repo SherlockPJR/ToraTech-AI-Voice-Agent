@@ -18,7 +18,6 @@ from typing import Optional, Dict, Tuple
 load_dotenv()
 
 logging.basicConfig(
-    # Logging setup
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
@@ -29,13 +28,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class ConversationLogger:
-    # Structured conversation logging with timestamps
+    """Logs conversation sessions with structured metadata and timing."""
     def __init__(self, log_file="conversations.json"):
         self.log_file = log_file
         self.current_session = None
         
     def start_session(self, stream_sid):
-        # Start a new conversation session
+        """Initialize new conversation session with metadata tracking."""
         self.current_session = {
             "session_id": str(uuid.uuid4()),
             "stream_sid": stream_sid,
@@ -56,7 +55,7 @@ class ConversationLogger:
         logger.info(f"Started conversation session: {self.current_session['session_id']}")
         
     def log_message(self, role, content, message_type="text"):
-        # Log a conversation message
+        """Record conversation message with role attribution."""
         if not self.current_session:
             return
             
@@ -78,7 +77,7 @@ class ConversationLogger:
         logger.info(f"Conversation - {role}: {content[:100]}...")
         
     def log_function_call(self, func_name, arguments, result, execution_time=None):
-        # Log a function call
+        """Record function execution with timing and success status."""
         if not self.current_session:
             return
             
@@ -97,12 +96,12 @@ class ConversationLogger:
         logger.info(f"Function call: {func_name} - Success: {function_call['success']}")
         
     def log_call_end_request(self):
-        # Log when user requests to end call
+        """Mark session as user-initiated termination."""
         if self.current_session:
             self.current_session["metadata"]["call_ended_by_user"] = True
         
     def end_session(self):
-        # End the current session and save to file
+        """Finalize session with duration calculation and save to JSON file."""
         if not self.current_session:
             return
             
@@ -134,10 +133,8 @@ class ConversationLogger:
         
         self.current_session = None
 
-# ---------------Supabase Initialisation---------------
-
 def init_supabase() -> Client:
-    # Initialize Supabase client
+    """Initialize Supabase client with environment credentials."""
     supabase_url = os.getenv("SUPABASE_URL")
     supabase_key = os.getenv("SUPABASE_KEY")
     
@@ -149,26 +146,18 @@ def init_supabase() -> Client:
     
     return create_client(supabase_url, supabase_key)
 
-# Global conversation logger instance
 conversation_logger = ConversationLogger()
 
 def load_config():
-    # Load agent configuration file
+    """Load Deepgram agent configuration from JSON file."""
     try:
         with open("config.json", "r") as f:
             return json.load(f)
     except (FileNotFoundError, json.JSONDecodeError):
-        # Return minimal working config or re-raise
         raise Exception("config.json not found or invalid")
 
-# --------------- Deepgram Connection ---------------
-
 def sts_connect():
-    # Connect to Deepgram STS websocket with retry logic
-
-    # When we need to switch to OpenAI:
-    # Realtime API with WebSocket: https://platform.openai.com/docs/guides/realtime-websocket?connection-example=python
-    # Handling Audio with WebSockets: https://platform.openai.com/docs/guides/realtime-conversations#handling-audio-with-websockets
+    """Establish WebSocket connection to Deepgram STS with authentication."""
 
     deepgram_api_key = os.getenv("DEEPGRAM_API_KEY")
     if not deepgram_api_key:
@@ -184,27 +173,25 @@ def sts_connect():
     return sts_ws
 
 async def handle_barge_in(decoded, twilio_ws, streamsid):
-    # Barge-in handling with faster response
+    """Handle user interruption by clearing Twilio audio buffer."""
     if decoded["type"] == "UserStartedSpeaking":
         conversation_logger.log_message("system", "User started speaking (barge-in)", "barge_in")
         
-        # Send clear message immediately and more aggressively
+        # Clear Twilio audio buffer to interrupt agent speech
         clear_message = {
             "event": "clear",
             "streamSid": streamsid
         }
         await twilio_ws.send(json.dumps(clear_message))
         
-        # Send a second clear to ensure interruption
+        # Second clear for reliability
         await asyncio.sleep(0.1)
         await twilio_ws.send(json.dumps(clear_message))
         
         logger.info("Sent clear message for barge-in")
 
-# ---------------Function/Tool Calling---------------
-
 async def end_call_function(arguments):
-    # Function to handle call termination requests
+    """Process agent-initiated call termination request."""
     conversation_logger.log_call_end_request()
     return {
         "status": "call_ending",
@@ -212,13 +199,13 @@ async def end_call_function(arguments):
     }
 
 async def execute_function_call(func_name, arguments):
-    # Execute function call with logging and timing
+    """Execute calendar function with timing, error handling, and clinic data injection."""
     global caller_phone, called_phone
     start_time = time.time()
     
     try:
         if func_name == "end_call":
-            # Handle call ending
+            # Process call termination
             result = await end_call_function(arguments)
             execution_time = time.time() - start_time
             conversation_logger.log_function_call(func_name, arguments, result, execution_time)
@@ -226,11 +213,11 @@ async def execute_function_call(func_name, arguments):
         elif func_name in FUNCTION_MAP:
             logger.info(f"Executing function: {func_name} with args: {arguments}")
 
-            # Pass phone numbers and day-specific clinic data to functions
+            # Inject phone numbers and day-specific clinic data
             if called_phone:
                 arguments["called_phone"] = called_phone
                 
-                # Extract time input to determine target day and pass day-specific data
+                # Extract target day from time input for optimized data passing
                 time_input = arguments.get("time_input") or arguments.get("date_input") or "today"
                 day_specific_data = clinic_cache.get_day_specific_data(called_phone, time_input)
                 
@@ -242,7 +229,7 @@ async def execute_function_call(func_name, arguments):
                     day_name = weekday_names[target_day]
                     logger.debug(f"Passing {day_name} data for {clinic_name} to function {func_name} (day {target_day})")
                 else:
-                    # Fallback to full clinic data if day extraction fails
+                    # Use full clinic data when day parsing fails
                     clinic_data = clinic_cache.get_cached_data(called_phone)
                     if clinic_data:
                         arguments["_clinic_data"] = clinic_data
@@ -276,7 +263,7 @@ async def execute_function_call(func_name, arguments):
         return result
 
 def create_function_call_response(func_id, func_name, result):
-    # Build response object for function call result
+    """Build Deepgram-compatible function call response message."""
     return {
         "type": "FunctionCallResponse",
         "id": func_id,
@@ -284,11 +271,10 @@ def create_function_call_response(func_id, func_name, result):
         "content": json.dumps(result)
     }
 
-# Global flag to track call termination
 call_should_end = False
 
 async def handle_function_call_request(decoded, sts_ws):
-    # Handle FunctionCallRequest events from Deepgram with error handling
+    """Process function call requests from Deepgram agent with error handling."""
     global call_should_end
     
     try:
@@ -303,14 +289,14 @@ async def handle_function_call_request(decoded, sts_ws):
             await sts_ws.send(json.dumps(function_result))
             logger.info(f"Sent function result for {func_name}")
             
-            # Check if this was a call end request
+            # Set termination flag if end_call was executed
             if func_name == "end_call" and result.get("status") == "call_ending":
                 call_should_end = True
                 logger.info("Call termination requested by user")
             
     except Exception as e:
         logger.error(f"Error in function call handling: {e}")
-        # Send error response to prevent hanging
+        # Send error response to maintain conversation flow
         error_result = create_function_call_response(
             func_id if "func_id" in locals() else "unknown",
             func_name if "func_name" in locals() else "unknown",
@@ -322,18 +308,18 @@ async def handle_function_call_request(decoded, sts_ws):
             logger.error(f"Failed to send error response: {send_error}")
 
 async def handle_text_message(decoded, twilio_ws, sts_ws, streamsid):
-    # Process incoming JSON messages with conversation logging
+    """Process JSON messages from Deepgram with logging and call termination detection."""
     global call_should_end
     
     message_type = decoded.get("type")
     
-    # Log conversation messages
+    # Record conversation text for session logging
     if message_type == "ConversationText":
         role = decoded.get("role", "unknown")
         content = decoded.get("content", "")
         conversation_logger.log_message(role, content)
         
-        # Check is the agent is ending the call
+        # Detect agent farewell phrases for call termination
         if role == "assistant":
             farewell_phrases = [
                 "have a great day",
@@ -345,16 +331,16 @@ async def handle_text_message(decoded, twilio_ws, sts_ws, streamsid):
                 "have a good day"
             ]
             
-            # Check if agent is giving farewell
+            # Trigger termination on farewell detection
             if any(phrase in content.lower() for phrase in farewell_phrases):
                 logger.info("Agent farewell detected - preparing to end call")
                 call_should_end = True
 
-        # Check if user is requesting call end
+        # Detect user termination requests
         if role == "user" and any(phrase in content.lower() for phrase in ["end call", "hang up", "goodbye", "end this call", "finish call"]):
             logger.info("User requested call termination via message")
     
-    # Log other important events
+    # Record system events and session state changes
     elif message_type == "Welcome":
         session_id = decoded.get("session_id", "unknown")
         logger.info(f"Deepgram session established: {session_id}")
@@ -366,22 +352,22 @@ async def handle_text_message(decoded, twilio_ws, sts_ws, streamsid):
     elif message_type == "AgentAudioDone":
         logger.info("Agent finished speaking")
         
-        # If call should end and agent finished speaking, terminate
+        # Terminate call after agent completes farewell
         if call_should_end:
             logger.info("Terminating call after agent finished farewell")
             await asyncio.sleep(1)  # Brief pause
-            # Close the websocket to end the call
+            # Close connection to end call
             await sts_ws.close()
     
-    # Handle barge-in with interruption
+    # Process user interruption events
     await handle_barge_in(decoded, twilio_ws, streamsid)
     
-    # Handle function calls
+    # Execute function calls from agent
     if message_type == "FunctionCallRequest":
         await handle_function_call_request(decoded, sts_ws)
 
 async def sts_sender(sts_ws, audio_queue):
-    # Send audio chunks from Twilio to Deepgram STS with monitoring
+    """Forward audio chunks from Twilio to Deepgram with monitoring."""
     logger.info("STS sender started")
     chunks_sent = 0
     
@@ -400,14 +386,14 @@ async def sts_sender(sts_ws, audio_queue):
         logger.info(f"STS sender stopped - Total chunks sent: {chunks_sent}")
 
 async def sts_receiver(sts_ws, twilio_ws, streamsid_queue):
-    # Receive messages from Deepgram STS and forward to Twilio
+    """Receive audio/JSON from Deepgram and forward to Twilio or process events."""
     logger.info("STS receiver started")
     streamsid = await streamsid_queue.get()
     
     try:
         async for message in sts_ws:
             if type(message) is str:
-                # Handle text (JSON) messages
+                # Process JSON events and function calls
                 try:
                     decoded = json.loads(message)
                     await handle_text_message(decoded, twilio_ws, sts_ws, streamsid)
@@ -415,7 +401,7 @@ async def sts_receiver(sts_ws, twilio_ws, streamsid_queue):
                     logger.error(f"JSON decode error: {e}")
                 continue
             
-            # Handle audio messages (mulaw → Twilio)
+            # Forward audio to Twilio in media message format
             raw_mulaw = message
             media_message = {
                 "event": "media",
@@ -431,21 +417,15 @@ async def sts_receiver(sts_ws, twilio_ws, streamsid_queue):
     finally:
         logger.info("STS receiver stopped")
 
-# Global variables for call session
 caller_phone = None
 called_phone = None
 
-# ---------------Twilio---------------
-
 async def get_phone_numbers_from_call_sid(call_sid: str) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Get caller and called phone numbers from Twilio API using callSid.
-    Returns (caller_phone, called_phone) or (None, None) if failed.
-    """
+    """Retrieve caller/called phone numbers from Twilio API using call SID."""
     try:
         from twilio.rest import Client
 
-        # Use only the working credentials
+        # Use main Twilio account credentials
         account_sid = os.getenv('TWILIO_MAIN_ACCOUNT_SID')
         auth_token = os.getenv('TWILIO_MAIN_ACCOUNT_AUTH_TOKEN')
 
@@ -453,11 +433,11 @@ async def get_phone_numbers_from_call_sid(call_sid: str) -> Tuple[Optional[str],
             logger.error('TWILIO_MAIN_ACCOUNT_SID and TWILIO_MAIN_ACCOUNT_AUTH_TOKEN required')
             return None, None
 
-        # Initialize client and fetch call
+        # Fetch call details from Twilio API
         client = Client(account_sid, auth_token)
         call = client.calls(call_sid).fetch()
 
-        # Extract phone numbers (from test: from_ might be None, use from_formatted)
+        # Extract formatted phone numbers from call object
         caller_phone = call.from_formatted
         called_phone = call.to
 
@@ -470,7 +450,7 @@ async def get_phone_numbers_from_call_sid(call_sid: str) -> Tuple[Optional[str],
 
 
 async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
-    # Receive audio/media events from Twilio and queue them for STS
+    """Process Twilio WebSocket events and forward audio to Deepgram queue."""
     global caller_phone, called_phone
     BUFFER_SIZE = 20 * 160
     inbuffer = bytearray(b"")
@@ -483,11 +463,11 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                 event = data["event"]
                 
                 if event == "start":
-                    # Get Twilio streamSid and start conversation logging
+                    # Extract stream ID and initialize session
                     start_data = data["start"]
                     streamsid = start_data["streamSid"]
                     
-                    # Get callSid and extract phone numbers from Twilio API
+                    # Retrieve call SID for phone number lookup
                     call_sid = start_data.get("callSid")
                     
                     if call_sid:
@@ -497,10 +477,10 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                         logger.warning("No callSid in start data")
                         caller_phone, called_phone = None, None
                     
-                    # Log phone numbers
+                    # Record caller and called numbers
                     logger.info(f"Call from {caller_phone} to {called_phone}")
                     
-                    # Initialize clinic cache for this call session
+                    # Load clinic data into cache for function calls
                     if called_phone:
                         try:
                             logger.info(f"Initializing clinic cache for {called_phone}")
@@ -508,14 +488,13 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                             logger.info(f"Clinic cache loaded: {clinic_data['clinic_name']} (ID: {clinic_data['clinic_id']})")
                         except Exception as e:
                             logger.error(f"CRITICAL: Failed to load clinic cache for {called_phone}: {e}")
-                            # Could optionally terminate call here if clinic data is mandatory
-                            # For now, continue but functions will fail gracefully
+                            # Continue without clinic data - functions will fail gracefully
                     else:
                         logger.warning("No called_phone available - clinic cache not initialized")
                     
-                    # Store in conversation logger
+                    # Initialize conversation logging session
                     conversation_logger.start_session(streamsid)
-                    # Add phone numbers to session data
+                    # Store phone numbers in session metadata
                     if conversation_logger.current_session:
                         conversation_logger.current_session["caller_phone"] = caller_phone
                         conversation_logger.current_session["called_phone"] = called_phone
@@ -528,7 +507,7 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                     logger.info("Twilio connection established")
                     
                 elif event == "media":
-                    # Collect inbound audio
+                    # Buffer inbound audio for processing
                     media = data["media"]
                     chunk = base64.b64decode(media["payload"])
                     if media["track"] == "inbound":
@@ -539,7 +518,7 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                     conversation_logger.end_session()
                     break
                 
-                # Send fixed-size chunks to queue
+                # Forward audio chunks to Deepgram when buffer is full
                 while len(inbuffer) >= BUFFER_SIZE:
                     chunk = inbuffer[:BUFFER_SIZE]
                     audio_queue.put_nowait(chunk)
@@ -553,13 +532,13 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
     except Exception as e:
         logger.error(f"Error in Twilio receiver: {e}")
     finally:
-        # Ensure session is closed even if error occurs
+        # Close conversation logging on exit
         conversation_logger.end_session()
         logger.info("Twilio receiver stopped")
 
 
 async def twilio_handler(twilio_ws):
-    # Main Twilio connection handler (bridges Twilio and Deepgram)
+    """Main handler that bridges Twilio WebSocket with Deepgram STS connection."""
     global call_should_end
     call_should_end = False  # Reset for each call
     
@@ -570,12 +549,12 @@ async def twilio_handler(twilio_ws):
     
     try:
         async with sts_connect() as sts_ws:
-            # Send configuration to STS
+            # Initialize Deepgram agent with config
             config_message = load_config()
             await sts_ws.send(json.dumps(config_message))
             logger.info("Configuration sent to Deepgram")
             
-            # Run sender/receiver tasks concurrently
+            # Start bidirectional audio/message processing
             tasks = [
                 asyncio.create_task(sts_sender(sts_ws, audio_queue)),
                 asyncio.create_task(sts_receiver(sts_ws, twilio_ws, streamsid_queue)),
@@ -585,7 +564,7 @@ async def twilio_handler(twilio_ws):
             try:
                 await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             finally:
-                # Cancel remaining tasks
+                # Clean up remaining async tasks
                 for task in tasks:
                     if not task.done():
                         task.cancel()
@@ -605,7 +584,7 @@ async def twilio_handler(twilio_ws):
         logger.info("Twilio handler completed")
 
 async def main():
-    # Start local websocket server for Twilio
+    """Start WebSocket server to receive Twilio connections."""
     logger.info("Starting Voice Agent Server")
     logger.info("=" * 50)
     logger.info("Features enabled:")
