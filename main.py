@@ -146,7 +146,199 @@ def init_supabase() -> Client:
     
     return create_client(supabase_url, supabase_key)
 
+class PerformanceLogger:
+    """Tracks critical performance metrics for customer experience optimization."""
+    
+    def __init__(self, log_file="performance.json"):
+        self.log_file = log_file
+        self.current_session = None
+        self.enabled = os.getenv("PERFORMANCE_LOGGING_LEVEL", "BASIC").upper() != "OFF"
+        self.timing_stack = {}
+        
+    def start_session(self, stream_sid, caller_phone=None, called_phone=None):
+        """Initialize performance tracking session."""
+        if not self.enabled:
+            return
+            
+        self.current_session = {
+            "session_id": str(uuid.uuid4()),
+            "stream_sid": stream_sid,
+            "caller_phone": caller_phone,
+            "called_phone": called_phone,
+            "start_time": datetime.now().isoformat(),
+            "end_time": None,
+            "metrics": {
+                "call_setup_time_ms": None,
+                "speech_to_response_latencies_ms": [],
+                "interruption_response_times_ms": [],
+                "function_executions": [],
+                "deepgram_processing_times_ms": [],
+                "audio_timing_events": {
+                    "user_speech_start_timestamps": [],
+                    "user_speech_end_timestamps": [],
+                    "agent_speech_start_timestamps": [],
+                    "agent_speech_end_timestamps": []
+                },
+                "summary": {}
+            }
+        }
+        logger.info(f"Performance tracking started: {self.current_session['session_id']}")
+        
+    def start_timing(self, metric_name, context=None):
+        """Start timing measurement for a metric."""
+        if not self.enabled or not self.current_session:
+            return
+            
+        self.timing_stack[metric_name] = {
+            "start_time": time.time(),
+            "context": context or {}
+        }
+        
+    def end_timing(self, metric_name, context=None):
+        """End timing measurement and record the metric."""
+        if not self.enabled or not self.current_session or metric_name not in self.timing_stack:
+            return
+            
+        start_data = self.timing_stack.pop(metric_name)
+        duration_ms = (time.time() - start_data["start_time"]) * 1000
+        
+        self.log_metric(metric_name, duration_ms, "ms", {**start_data["context"], **(context or {})})
+        
+    def log_metric(self, metric_name, value, unit="ms", context=None):
+        """Record a performance metric."""
+        if not self.enabled or not self.current_session:
+            return
+            
+        try:
+            metrics = self.current_session["metrics"]
+            
+            if metric_name == "call_setup_time":
+                metrics["call_setup_time_ms"] = value
+            elif metric_name == "speech_to_response":
+                metrics["speech_to_response_latencies_ms"].append(value)
+            elif metric_name == "interruption_response":
+                metrics["interruption_response_times_ms"].append(value)
+            elif metric_name == "function_execution":
+                metrics["function_executions"].append({
+                    "name": context.get("function_name", "unknown"),
+                    "duration_ms": value,
+                    "timestamp": datetime.now().isoformat()
+                })
+            elif metric_name == "deepgram_processing":
+                metrics["deepgram_processing_times_ms"].append(value)
+            elif metric_name == "user_speech_start" and unit == "timestamp":
+                metrics["audio_timing_events"]["user_speech_start_timestamps"].append(value)
+            elif metric_name == "user_speech_end" and unit == "timestamp":
+                metrics["audio_timing_events"]["user_speech_end_timestamps"].append(value)
+            elif metric_name == "agent_speech_start" and unit == "timestamp":
+                metrics["audio_timing_events"]["agent_speech_start_timestamps"].append(value)
+            elif metric_name == "agent_speech_end" and unit == "timestamp":
+                metrics["audio_timing_events"]["agent_speech_end_timestamps"].append(value)
+                
+        except Exception as e:
+            logger.warning(f"Performance metric recording failed: {e}")
+            
+    def end_session(self):
+        """Finalize session with summary statistics and save to file."""
+        if not self.enabled or not self.current_session:
+            return
+            
+        try:
+            self.current_session["end_time"] = datetime.now().isoformat()
+            
+            # Calculate summary statistics
+            metrics = self.current_session["metrics"]
+            summary = {}
+            
+            # Calculate audio-to-audio latencies from timestamps
+            audio_events = metrics["audio_timing_events"]
+            user_end_times = audio_events["user_speech_end_timestamps"]
+            agent_start_times = audio_events["agent_speech_start_timestamps"]
+            
+            audio_latencies = []
+            if user_end_times and agent_start_times:
+                for user_end_str in user_end_times:
+                    try:
+                        user_end = datetime.fromisoformat(user_end_str)
+                        
+                        # Find the next agent start time after this user end time
+                        next_agent_starts = []
+                        for agent_start_str in agent_start_times:
+                            agent_start = datetime.fromisoformat(agent_start_str)
+                            if agent_start > user_end:
+                                next_agent_starts.append(agent_start)
+                        
+                        if next_agent_starts:
+                            # Get the earliest agent start after user end
+                            earliest_agent_start = min(next_agent_starts)
+                            latency_ms = (earliest_agent_start - user_end).total_seconds() * 1000
+                            audio_latencies.append(latency_ms)
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Failed to parse timestamp for latency calculation: {e}")
+                        continue
+            
+            if audio_latencies:
+                summary["audio_to_audio_latencies_ms"] = audio_latencies
+                summary["avg_audio_latency_ms"] = sum(audio_latencies) / len(audio_latencies)
+                summary["max_audio_latency_ms"] = max(audio_latencies)
+                summary["min_audio_latency_ms"] = min(audio_latencies)
+            
+            if metrics["speech_to_response_latencies_ms"]:
+                summary["avg_response_latency_ms"] = sum(metrics["speech_to_response_latencies_ms"]) / len(metrics["speech_to_response_latencies_ms"])
+                summary["max_response_latency_ms"] = max(metrics["speech_to_response_latencies_ms"])
+                
+            if metrics["interruption_response_times_ms"]:
+                summary["avg_interruption_response_ms"] = sum(metrics["interruption_response_times_ms"]) / len(metrics["interruption_response_times_ms"])
+                
+            if metrics["function_executions"]:
+                summary["total_function_time_ms"] = sum(f["duration_ms"] for f in metrics["function_executions"])
+                summary["function_count"] = len(metrics["function_executions"])
+                
+            if metrics["deepgram_processing_times_ms"]:
+                summary["avg_deepgram_processing_ms"] = sum(metrics["deepgram_processing_times_ms"]) / len(metrics["deepgram_processing_times_ms"])
+                
+            # Calculate call duration
+            start = datetime.fromisoformat(self.current_session["start_time"])
+            end = datetime.fromisoformat(self.current_session["end_time"])
+            summary["call_duration_seconds"] = (end - start).total_seconds()
+            
+            metrics["summary"] = summary
+            
+            # Save to file
+            self._save_to_file()
+            
+            audio_avg = summary.get('avg_audio_latency_ms', 0)
+            logger.info(f"Performance session completed - True audio latency: {audio_avg:.1f}ms, Functions: {summary.get('function_count', 0)}")
+            
+        except Exception as e:
+            logger.error(f"Performance session finalization failed: {e}")
+        finally:
+            self.current_session = None
+            
+    def _save_to_file(self):
+        """Save performance data to JSON file."""
+        try:
+            # Load existing performance data
+            performance_data = []
+            if os.path.exists(self.log_file):
+                try:
+                    with open(self.log_file, 'r') as f:
+                        performance_data = json.load(f)
+                except (json.JSONDecodeError, FileNotFoundError):
+                    performance_data = []
+                    
+            # Add current session
+            performance_data.append(self.current_session)
+            
+            # Save to file
+            with open(self.log_file, 'w') as f:
+                json.dump(performance_data, f, indent=2)
+                
+        except Exception as e:
+            logger.error(f"Failed to save performance data: {e}")
+
 conversation_logger = ConversationLogger()
+performance_logger = PerformanceLogger()
 
 def load_config():
     """Load Deepgram agent configuration from JSON file."""
@@ -177,6 +369,12 @@ async def handle_barge_in(decoded, twilio_ws, streamsid):
     if decoded["type"] == "UserStartedSpeaking":
         conversation_logger.log_message("system", "User started speaking (barge-in)", "barge_in")
         
+        # Track user audio start timing
+        performance_logger.log_metric("user_speech_start", datetime.now().isoformat(), "timestamp")
+        
+        # Start timing interruption response
+        performance_logger.start_timing("interruption_response")
+        
         # Clear Twilio audio buffer to interrupt agent speech
         clear_message = {
             "event": "clear",
@@ -187,6 +385,9 @@ async def handle_barge_in(decoded, twilio_ws, streamsid):
         # Second clear for reliability
         await asyncio.sleep(0.1)
         await twilio_ws.send(json.dumps(clear_message))
+        
+        # End timing after clear messages sent
+        performance_logger.end_timing("interruption_response")
         
         logger.info("Sent clear message for barge-in")
 
@@ -209,6 +410,10 @@ async def execute_function_call(func_name, arguments):
             result = await end_call_function(arguments)
             execution_time = time.time() - start_time
             conversation_logger.log_function_call(func_name, arguments, result, execution_time)
+            
+            # Record performance metric for end_call function
+            performance_logger.log_metric("function_execution", execution_time * 1000, "ms", {"function_name": func_name})
+            
             return result
         elif func_name in FUNCTION_MAP:
             logger.info(f"Executing function: {func_name} with args: {arguments}")
@@ -245,6 +450,10 @@ async def execute_function_call(func_name, arguments):
             
             logger.info(f"Function '{func_name}' completed in {execution_time:.3f}s")
             conversation_logger.log_function_call(func_name, arguments, result, execution_time)
+            
+            # Record performance metric for function execution
+            performance_logger.log_metric("function_execution", execution_time * 1000, "ms", {"function_name": func_name})
+            
             return result
         else:
             result = {"error": f"Unknown function: {func_name}"}
@@ -313,11 +522,34 @@ async def handle_text_message(decoded, twilio_ws, sts_ws, streamsid):
     
     message_type = decoded.get("type")
     
+    # Debug: Log important message types for troubleshooting
+    if message_type not in ["ConversationText", "History"]:  # Avoid spam from frequent messages
+        logger.info(f"Deepgram message type: {message_type}")
+    
+    # Handle History events (which contain assistant responses)
+    if message_type == "History":
+        role = decoded.get("role", "unknown")
+        if role == "assistant":
+            # This is when agent starts speaking - History events indicate agent response
+            logger.info("Agent started speaking (inferred from History event)")
+            
+            # Track agent audio start timing and end speech-to-response latency
+            performance_logger.log_metric("agent_speech_start", datetime.now().isoformat(), "timestamp")
+            performance_logger.end_timing("speech_to_response")
+            
+            # End call setup timing when agent first starts speaking
+            performance_logger.end_timing("call_setup")
+    
     # Record conversation text for session logging
     if message_type == "ConversationText":
         role = decoded.get("role", "unknown")
         content = decoded.get("content", "")
         conversation_logger.log_message(role, content)
+        
+        # Track when user finishes speaking (inferred from receiving user text)
+        if role == "user":
+            performance_logger.log_metric("user_speech_end", datetime.now().isoformat(), "timestamp")
+            performance_logger.start_timing("speech_to_response")
         
         # Detect agent farewell phrases for call termination
         if role == "assistant":
@@ -346,11 +578,11 @@ async def handle_text_message(decoded, twilio_ws, sts_ws, streamsid):
         logger.info(f"Deepgram session established: {session_id}")
         conversation_logger.log_message("system", f"Session established: {session_id}", "welcome")
     
-    elif message_type == "AgentStartedSpeaking":
-        logger.info("Agent started speaking")
-        
     elif message_type == "AgentAudioDone":
         logger.info("Agent finished speaking")
+        
+        # Track agent audio end timing
+        performance_logger.log_metric("agent_speech_end", datetime.now().isoformat(), "timestamp")
         
         # Terminate call after agent completes farewell
         if call_should_end:
@@ -374,6 +606,10 @@ async def sts_sender(sts_ws, audio_queue):
     try:
         while True:
             chunk = await audio_queue.get()
+            
+            # Start timing Deepgram processing
+            performance_logger.start_timing("deepgram_processing")
+            
             await sts_ws.send(chunk)
             chunks_sent += 1
             
@@ -393,6 +629,9 @@ async def sts_receiver(sts_ws, twilio_ws, streamsid_queue):
     try:
         async for message in sts_ws:
             if type(message) is str:
+                # End timing for Deepgram processing when we get a response
+                performance_logger.end_timing("deepgram_processing")
+                
                 # Process JSON events and function calls
                 try:
                     decoded = json.loads(message)
@@ -400,6 +639,9 @@ async def sts_receiver(sts_ws, twilio_ws, streamsid_queue):
                 except json.JSONDecodeError as e:
                     logger.error(f"JSON decode error: {e}")
                 continue
+            
+            # End timing for Deepgram processing when we get audio response
+            performance_logger.end_timing("deepgram_processing")
             
             # Forward audio to Twilio in media message format
             raw_mulaw = message
@@ -500,6 +742,11 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                         conversation_logger.current_session["called_phone"] = called_phone
                         conversation_logger.current_session["agent_id"] = called_phone  # Use called number as agent ID
                     
+                    # Initialize performance tracking session
+                    performance_logger.start_session(streamsid, caller_phone, called_phone)
+                    # Start timing call setup
+                    performance_logger.start_timing("call_setup")
+                    
                     streamsid_queue.put_nowait(streamsid)
                     logger.info(f"Call started - StreamSID: {streamsid}")
                     
@@ -516,6 +763,7 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                 elif event == "stop":
                     logger.info("Call ended")
                     conversation_logger.end_session()
+                    performance_logger.end_session()
                     break
                 
                 # Forward audio chunks to Deepgram when buffer is full
@@ -534,6 +782,7 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
     finally:
         # Close conversation logging on exit
         conversation_logger.end_session()
+        performance_logger.end_session()
         logger.info("Twilio receiver stopped")
 
 
@@ -576,6 +825,7 @@ async def twilio_handler(twilio_ws):
     except Exception as e:
         logger.error(f"Error in Twilio handler: {e}")
         conversation_logger.end_session()
+        performance_logger.end_session()
     finally:
         try:
             await twilio_ws.close()
@@ -589,6 +839,7 @@ async def main():
     logger.info("=" * 50)
     logger.info("Features enabled:")
     logger.info("- Structured conversation logging")
+    logger.info("- Performance metrics tracking")
     logger.info("- Error handling")  
     logger.info("- Function execution timing")
     logger.info("- Connection monitoring")
@@ -601,7 +852,9 @@ async def main():
         await websockets.serve(twilio_handler, "localhost", 5000)
         logger.info("Server started on localhost:5000")
         logger.info("Conversation logs will be saved to: conversations.json")
+        logger.info("Performance logs will be saved to: performance.json")
         logger.info("System logs will be saved to: voice_agent.log")
+        logger.info(f"Performance logging: {'ENABLED' if performance_logger.enabled else 'DISABLED'}")
         await asyncio.Future()  # Run forever
     except Exception as e:
         logger.error(f"Server error: {e}")
