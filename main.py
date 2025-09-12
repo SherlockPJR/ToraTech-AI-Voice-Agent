@@ -452,12 +452,51 @@ async def get_phone_numbers_from_call_sid(call_sid: str) -> Tuple[Optional[str],
         logger.error(f'Failed to get phone numbers from Twilio API: {e}')
         return None, None
 
+async def start_call_recording(call_sid: str) -> Optional[str]:
+    """Start dual-channel recording for a call using Twilio REST API."""
+    try:
+        from twilio.rest import Client
+
+        # Use main Twilio account credentials
+        account_sid = os.getenv('TWILIO_MAIN_ACCOUNT_SID')
+        auth_token = os.getenv('TWILIO_MAIN_ACCOUNT_AUTH_TOKEN')
+
+        if not account_sid or not auth_token:
+            logger.error('TWILIO_MAIN_ACCOUNT_SID and TWILIO_MAIN_ACCOUNT_AUTH_TOKEN required for recording')
+            return None
+
+        client = Client(account_sid, auth_token)
+        
+        # Optional: Set up recording status callback URL if configured
+        callback_url = os.getenv('RECORDING_STATUS_CALLBACK_URL')
+        recording_params = {}
+        
+        if callback_url:
+            recording_params['recording_status_callback'] = callback_url
+            recording_params['recording_status_callback_event'] = ['in-progress', 'completed', 'failed']
+            logger.info(f'Recording status callbacks will be sent to: {callback_url}')
+        
+        # Set recording channels to dual for separate inbound/outbound tracks
+        recording_params['recording_channels'] = 'dual'
+
+        # Start recording using the correct REST API endpoint
+        # POST https://api.twilio.com/2010-04-01/Accounts/{AccountSid}/Calls/{CallsSid}/Recordings.json
+        recording = client.calls(call_sid).recordings.create(**recording_params)
+        
+        logger.info(f'RECORDING STARTED - SID: {recording.sid}, Call: {call_sid}, Status: {recording.status}')
+        return recording.sid
+
+    except Exception as e:
+        logger.error(f'Failed to start call recording: {e}')
+        return None
+
 
 async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
     """Process Twilio WebSocket events and forward audio to Deepgram queue."""
     global caller_phone, called_phone
     BUFFER_SIZE = 20 * 160
     inbuffer = bytearray(b"")
+    call_sid = None  # Track call SID for recording logging
     logger.info("Twilio receiver started")
     
     try:
@@ -484,6 +523,15 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                     # Record caller and called numbers
                     logger.info(f"Call from {caller_phone} to {called_phone}")
                     
+                    # Start call recording if call_sid is available
+                    recording_sid = None
+                    if call_sid and os.getenv("ENABLE_CALL_RECORDING", "false").lower() == "true":
+                        try:
+                            recording_sid = await start_call_recording(call_sid)
+                        except Exception as e:
+                            logger.error(f"Failed to start call recording: {e}")
+                            # Continue without recording - this is not critical for call functionality
+                    
                     # Load clinic data into cache for function calls
                     if called_phone:
                         try:
@@ -498,17 +546,22 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                     
                     # Initialize conversation logging session
                     conversation_logger.start_session(streamsid)
-                    # Store phone numbers in session metadata
+                    # Store phone numbers and recording info in session metadata
                     if conversation_logger.current_session:
                         conversation_logger.current_session["caller_phone"] = caller_phone
                         conversation_logger.current_session["called_phone"] = called_phone
                         conversation_logger.current_session["agent_id"] = called_phone  # Use called number as agent ID
+                        conversation_logger.current_session["call_sid"] = call_sid
+                        if recording_sid:
+                            conversation_logger.current_session["recording_sid"] = recording_sid
                     
                     # Initialize performance tracking session
                     performance_logger.start_session(streamsid, caller_phone, called_phone)
                     # Start timing call setup
                     performance_logger.start_timing("call_setup")
                     
+                    # Recording is managed via TwiML (<Start><Record/>) when enabled; no REST start here
+
                     streamsid_queue.put_nowait(streamsid)
                     logger.info(f"Call started - StreamSID: {streamsid}")
                     
@@ -531,6 +584,10 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                         
                 elif event == "stop":
                     logger.info("Call ended")
+                    # Log recording end if recording was active
+                    if conversation_logger.current_session and conversation_logger.current_session.get("recording_sid"):
+                        recording_sid = conversation_logger.current_session["recording_sid"]
+                        logger.info(f'RECORDING ENDED - SID: {recording_sid}, Call: {call_sid}')
                     conversation_logger.end_session()
                     performance_logger.end_session()
                     break
