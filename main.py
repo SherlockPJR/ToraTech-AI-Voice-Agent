@@ -9,7 +9,11 @@ from datetime import datetime
 from dotenv import load_dotenv
 import uuid
 from functions_google_calendar import FUNCTION_MAP
+from functions_faq import get_faq_answer
 from clinic_cache import clinic_cache, customer_cache
+
+# Add FAQ function to FUNCTION_MAP
+FUNCTION_MAP["get_faq_answer"] = get_faq_answer
 
 from twilio.rest import Client
 from supabase import create_client, Client
@@ -62,11 +66,13 @@ def load_dynamic_config(caller_phone: str, called_phone: str) -> dict:
             clinic_name = 'Our Clinic'
             clinic_location = 'Your Area'
             clinic_phone = 'Our Main Number'
+            business_name = 'Business Name'
         else:
             # Extract clinic information from cache
             clinic_name = clinic_data.get('clinic_name', 'Our Clinic')
             clinic_address = clinic_data.get('address', 'Your Area')
             clinic_phone = clinic_data.get('phone_number', 'Our Main Number')
+            business_name = clinic_data.get('business_name')
             
             # Parse location from address (extract city, state if possible)
             clinic_location = clinic_address
@@ -86,11 +92,12 @@ def load_dynamic_config(caller_phone: str, called_phone: str) -> dict:
         config_str = config_str.replace('{CLINIC_LOCATION}', clinic_location)
         config_str = config_str.replace('{CLINIC_PHONE}', clinic_phone)
         config_str = config_str.replace('{CALLER_PHONE}', caller_phone or 'the caller')
+        config_str = config_str.replace('{BUSINESS_NAME}', business_name)
         
         # Convert back to dictionary
         dynamic_config = json.loads(config_str)
         
-        logger.info(f"Generated dynamic config for {clinic_name} in {clinic_location}")
+        logger.info(f"Generated dynamic config for {business_name} in {clinic_location}")
         return dynamic_config
         
     except FileNotFoundError:
@@ -659,6 +666,14 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                             logger.info(f"Initializing clinic cache for {called_phone}")
                             clinic_data = await clinic_cache.load_clinic_data(called_phone)
                             logger.info(f"Clinic cache loaded: {clinic_data['clinic_name']} (ID: {clinic_data['clinic_id']})")
+                            
+                            # Load FAQ data into cache for this clinic
+                            from functions_faq import faq_cache
+                            clinic_id = clinic_data['clinic_id']
+                            logger.info(f"Initializing FAQ cache for clinic_id: {clinic_id}")
+                            faq_data = await faq_cache.load_clinic_faqs(clinic_id)
+                            logger.info(f"FAQ cache loaded: {len(faq_data.get('faqs', []))} FAQs available")
+                            
                         except Exception as e:
                             logger.error(f"CRITICAL: Failed to load clinic cache for {called_phone}: {e}")
                             # Continue without clinic data - functions will fail gracefully
