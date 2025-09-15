@@ -45,13 +45,63 @@ def init_supabase() -> Client:
 conversation_logger = ConversationLogger()
 performance_logger = PerformanceLogger()
 
-def load_config():
-    """Load Deepgram agent configuration from JSON file."""
+
+def load_dynamic_config(caller_phone: str, called_phone: str) -> dict:
+    """Load dynamic configuration with clinic-specific variables injected."""
     try:
-        with open("config.json", "r") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        raise Exception("config.json not found or invalid")
+        # Load template configuration
+        with open("config_template.json", "r") as f:
+            config_template = json.load(f)
+        
+        # Get clinic data from cache, or use defaults if not found
+        clinic_data = clinic_cache.get_cached_data(called_phone)
+        
+        if not clinic_data:
+            logger.warning(f"No clinic data found for {called_phone}, using default values")
+            # Use default values when clinic data is not available
+            clinic_name = 'Our Clinic'
+            clinic_location = 'Your Area'
+            clinic_phone = 'Our Main Number'
+        else:
+            # Extract clinic information from cache
+            clinic_name = clinic_data.get('clinic_name', 'Our Clinic')
+            clinic_address = clinic_data.get('address', 'Your Area')
+            clinic_phone = clinic_data.get('phone_number', 'Our Main Number')
+            
+            # Parse location from address (extract city, state if possible)
+            clinic_location = clinic_address
+            if clinic_address and clinic_address != 'Your Area':
+                # Try to extract meaningful location (city, state) from full address
+                address_parts = clinic_address.split(',')
+                if len(address_parts) >= 2:
+                    # Assume format like "123 Main St, Gadsden, AL 35901"
+                    # Take the last 2 parts as "City, State"
+                    clinic_location = ', '.join(address_parts[-2:]).strip()
+        
+        # Convert config to JSON string for variable substitution
+        config_str = json.dumps(config_template, indent=2)
+        
+        # Perform variable substitution
+        config_str = config_str.replace('{CLINIC_NAME}', clinic_name)
+        config_str = config_str.replace('{CLINIC_LOCATION}', clinic_location)
+        config_str = config_str.replace('{CLINIC_PHONE}', clinic_phone)
+        config_str = config_str.replace('{CALLER_PHONE}', caller_phone or 'the caller')
+        
+        # Convert back to dictionary
+        dynamic_config = json.loads(config_str)
+        
+        logger.info(f"Generated dynamic config for {clinic_name} in {clinic_location}")
+        return dynamic_config
+        
+    except FileNotFoundError:
+        logger.error("config_template.json not found. This file is required for the system to function.")
+        raise Exception("config_template.json is missing. Please ensure this file exists in the project root.")
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in config_template.json: {e}")
+        raise Exception(f"config_template.json contains invalid JSON: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error in dynamic config loading: {e}")
+        raise Exception(f"Failed to load dynamic configuration: {e}")
 
 def sts_connect():
     """Establish WebSocket connection to Deepgram STS with authentication."""
@@ -373,6 +423,71 @@ async def sts_sender(sts_ws, audio_queue):
     finally:
         logger.info(f"STS sender stopped - Total chunks sent: {chunks_sent}")
 
+async def sts_receiver_with_config(sts_ws, twilio_ws, streamsid_queue):
+    """Receive audio/JSON from Deepgram with dynamic config initialization."""
+    global caller_phone, called_phone, phone_numbers_ready
+    logger.info("STS receiver started, waiting for phone numbers...")
+    
+    # Wait for phone numbers to be available
+    await phone_numbers_ready.wait()
+    logger.info("Phone numbers available, sending dynamic config")
+    
+    # Send dynamic configuration based on phone numbers
+    try:
+        config_message = load_dynamic_config(caller_phone, called_phone)
+        await sts_ws.send(json.dumps(config_message))
+        logger.info("Dynamic configuration sent to Deepgram")
+    except Exception as e:
+        logger.error(f"Failed to load or send dynamic config: {e}")
+        logger.error("Cannot proceed without valid configuration. Terminating connection.")
+        return
+    
+    # Now proceed with normal sts_receiver functionality
+    streamsid = await streamsid_queue.get()
+    
+    try:
+        async for message in sts_ws:
+            if type(message) is str:
+                
+                # Process JSON events and function calls
+                try:
+                    decoded = json.loads(message)
+                    await handle_text_message(decoded, twilio_ws, sts_ws, streamsid)
+                except json.JSONDecodeError as e:
+                    logger.error(f"JSON decode error: {e}")
+                continue
+            
+            # Forward audio to Twilio in media message format
+            raw_mulaw = message
+            first_frame = False
+            if getattr(performance_logger, "current_turn", None) and performance_logger.current_turn.get("timestamps", {}).get("assistant_history_ts") and not performance_logger.current_turn.get("timestamps", {}).get("first_agent_audio_ts"):
+                performance_logger.set_turn_timestamp("first_agent_audio_ts")
+                first_frame = True
+            # Measure base64 encode and Twilio send times for the first frame only
+            if first_frame:
+                t_enc0 = time.time()
+                payload = base64.b64encode(raw_mulaw).decode("ascii")
+                tts_encode_ms = (time.time() - t_enc0) * 1000
+                performance_logger.set_turn_transport_metric("tts_encode_ms_first", tts_encode_ms)
+            else:
+                payload = base64.b64encode(raw_mulaw).decode("ascii")
+            media_message = {"event": "media", "streamSid": streamsid, "media": {"payload": payload}}
+            if first_frame:
+                t_send0 = time.time()
+                await twilio_ws.send(json.dumps(media_message))
+                twilio_send_ms = (time.time() - t_send0) * 1000
+                performance_logger.set_turn_transport_metric("twilio_send_ms_first", twilio_send_ms)
+                performance_logger.set_turn_timestamp("first_twilio_send_ts")
+            else:
+                await twilio_ws.send(json.dumps(media_message))
+            
+    except websockets.exceptions.ConnectionClosedError as e:
+        logger.error(f"Deepgram connection closed: code={e.code}, reason={e.reason}")
+    except Exception as e:
+        logger.error(f"Error in STS receiver with config: {e}")
+    finally:
+        logger.info("STS receiver with config stopped")
+
 async def sts_receiver(sts_ws, twilio_ws, streamsid_queue):
     """Receive audio/JSON from Deepgram and forward to Twilio or process events."""
     logger.info("STS receiver started")
@@ -423,6 +538,9 @@ async def sts_receiver(sts_ws, twilio_ws, streamsid_queue):
 
 caller_phone = None
 called_phone = None
+
+# Asyncio event to signal when phone numbers are available
+phone_numbers_ready = asyncio.Event()
 
 async def get_phone_numbers_from_call_sid(call_sid: str) -> Tuple[Optional[str], Optional[str]]:
     """Retrieve caller/called phone numbers from Twilio API using call SID."""
@@ -523,6 +641,9 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
                     # Record caller and called numbers
                     logger.info(f"Call from {caller_phone} to {called_phone}")
                     
+                    # Signal that phone numbers are now available
+                    phone_numbers_ready.set()
+                    
                     # Start call recording if call_sid is available
                     recording_sid = None
                     if call_sid and os.getenv("ENABLE_CALL_RECORDING", "false").lower() == "true":
@@ -614,8 +735,9 @@ async def twilio_receiver(twilio_ws, audio_queue, streamsid_queue):
 
 async def twilio_handler(twilio_ws):
     """Main handler that bridges Twilio WebSocket with Deepgram STS connection."""
-    global call_should_end
+    global call_should_end, phone_numbers_ready
     call_should_end = False  # Reset for each call
+    phone_numbers_ready.clear()  # Reset event for new call
     
     audio_queue = asyncio.Queue()
     streamsid_queue = asyncio.Queue()
@@ -624,15 +746,10 @@ async def twilio_handler(twilio_ws):
     
     try:
         async with sts_connect() as sts_ws:
-            # Initialize Deepgram agent with config
-            config_message = load_config()
-            await sts_ws.send(json.dumps(config_message))
-            logger.info("Configuration sent to Deepgram")
-            
-            # Start bidirectional audio/message processing
+            # Start bidirectional audio/message processing with dynamic config
             tasks = [
                 asyncio.create_task(sts_sender(sts_ws, audio_queue)),
-                asyncio.create_task(sts_receiver(sts_ws, twilio_ws, streamsid_queue)),
+                asyncio.create_task(sts_receiver_with_config(sts_ws, twilio_ws, streamsid_queue)),
                 asyncio.create_task(twilio_receiver(twilio_ws, audio_queue, streamsid_queue)),
             ]
             
@@ -659,10 +776,55 @@ async def twilio_handler(twilio_ws):
             logger.error(f"Error closing Twilio websocket: {e}")
         logger.info("Twilio handler completed")
 
+def validate_config_template():
+    """Validate that config_template.json exists and is valid JSON."""
+    try:
+        with open("config_template.json", "r") as f:
+            config_template = json.load(f)
+        
+        # Validate that required clinic placeholders exist
+        config_str = json.dumps(config_template)
+        required_placeholders = ['{CLINIC_NAME}', '{CLINIC_LOCATION}', '{CLINIC_PHONE}']
+        
+        missing_placeholders = []
+        for placeholder in required_placeholders:
+            if placeholder not in config_str:
+                missing_placeholders.append(placeholder)
+        
+        if missing_placeholders:
+            logger.warning(f"Missing required placeholders in config_template.json: {missing_placeholders}")
+        
+        # Optional placeholder check
+        optional_placeholders = ['{CALLER_PHONE}']
+        for placeholder in optional_placeholders:
+            if placeholder not in config_str:
+                logger.info(f"Optional placeholder {placeholder} not found in config_template.json")
+        
+        logger.info("config_template.json validation passed")
+        return True
+        
+    except FileNotFoundError:
+        logger.error("config_template.json not found. This file is required for the system to function.")
+        logger.error("Please ensure config_template.json exists in the project root directory.")
+        return False
+    except json.JSONDecodeError as e:
+        logger.error(f"Invalid JSON in config_template.json: {e}")
+        logger.error("Please check the JSON syntax in config_template.json")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error validating config_template.json: {e}")
+        return False
+
 async def main():
     """Start WebSocket server to receive Twilio connections."""
     logger.info("Starting Voice Agent Server")
     logger.info("=" * 50)
+    
+    # Validate configuration template before starting
+    if not validate_config_template():
+        logger.error("Configuration validation failed. Cannot start server.")
+        return
+    
     logger.info("Features enabled:")
     logger.info("- Structured conversation logging")
     logger.info("- Performance metrics tracking")
@@ -672,6 +834,7 @@ async def main():
     logger.info("- Improved barge-in handling")
     logger.info("- Concise responses (50-80 chars)")
     logger.info("- Call termination support")
+    logger.info("- Dynamic clinic configuration (config_template.json)")
     logger.info("=" * 50)
     
     try:
