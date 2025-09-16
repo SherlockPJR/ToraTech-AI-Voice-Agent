@@ -39,6 +39,11 @@
         "OPENING",
         "\"Hi, this is Stacey at {CLINIC_NAME} in {CLINIC_LOCATION}. How can I help you today?\"",
         "",
+        "CANCELLATION OR RESCHEDULE REQUESTS",
+        "- Ask for the caller's full name, then spell it back for confirmation before continuing (\"Thanks, that's J-O-H-N / D-O-E, right?\").",
+        "- Collect only the appointment date. The assistant should look up the times and, if multiple appointments exist, list them and ask which to change.",
+        "- After cancelling an appointment, always offer to reschedule or book another time.",
+        "",
         "CONVERSATION PRIORITIES",
         "1) Pain/medical mentions → acknowledge + reassure → offer to book.",
         "2) Service/price/hours/location questions → ALWAYS use get_faq_answer() FIRST → answer briefly.",
@@ -304,6 +309,34 @@
             }
             },
             "required": ["time_input", "name", "service"]
+        }
+        },
+        {
+        "name": "cancel_or_reschedule_appointment",
+        "description": "Cancel an existing appointment by customer name and date, optionally booking a new time",
+        "parameters": {
+            "type": "object",
+            "properties": {
+            "customer_name": {
+                "type": "string",
+                "description": "Full name of the customer as spelled out during the call"
+            },
+            "original_time_input": {
+                "type": "string",
+                "description": "Natural language description of the original appointment date (no time needed unless clarifying multiples)"
+            },
+            "action": {
+                "type": "string",
+                "description": "Use 'cancel' to only cancel, or 'reschedule' when booking a new time",
+                "enum": ["cancel", "reschedule"],
+                "default": "cancel"
+            },
+            "new_time_input": {
+                "type": "string",
+                "description": "Preferred new appointment time in natural language (required if rescheduling)"
+            }
+            },
+            "required": ["customer_name", "original_time_input"]
         }
         },
         {

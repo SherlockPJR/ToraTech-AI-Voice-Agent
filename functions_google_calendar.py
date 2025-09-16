@@ -1,6 +1,7 @@
 import os
 import datetime
 import asyncio
+import re
 from dateutil import parser as date_parser
 import dateparser
 from zoneinfo import ZoneInfo
@@ -161,6 +162,154 @@ def validate_requested_time_against_slots(requested_dt: datetime.datetime,
         return False, f"No appointment slots available on {day_name}s"
 
 
+
+
+# ---------------- Internal helpers ---------------- #
+
+def _normalize_text_for_match(value: Optional[str]) -> str:
+    """Lowercase a string and collapse whitespace for fuzzy comparisons."""
+    if not value:
+        return ""
+    return " ".join(value.lower().split())
+
+
+def _looks_time_specific(text: str) -> bool:
+    """Heuristically determine if the user provided a specific appointment time."""
+    lowered = text.lower()
+    if re.search(r"\d{1,2}:\d{2}", lowered):
+        return True
+    if re.search(r"\d{1,2}\s*(?:am|pm)", lowered):
+        return True
+    for keyword in ("morning", "afternoon", "evening", "night"):
+        if keyword in lowered:
+            return True
+    return False
+
+
+def _get_event_start_datetime(event: Dict, tz: str) -> Optional[datetime.datetime]:
+    """Extract a timezone-aware start datetime from a calendar event."""
+    start_info = event.get("start", {})
+    start_str = start_info.get("dateTime") or start_info.get("date")
+    if not start_str:
+        return None
+
+    try:
+        if start_info.get("dateTime"):
+            start_dt = date_parser.isoparse(start_str)
+        else:
+            start_dt = datetime.datetime.fromisoformat(start_str)
+            start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+    except Exception:
+        return None
+
+    tzinfo = ZoneInfo(tz)
+    if start_dt.tzinfo is None:
+        start_dt = start_dt.replace(tzinfo=tzinfo)
+    return start_dt.astimezone(tzinfo)
+
+
+def _build_search_window(original_time_input, tz: str, slot_duration: int) -> Dict:
+    """Create a time window for locating an existing appointment."""
+    tzinfo = ZoneInfo(tz)
+
+    if isinstance(original_time_input, dict):
+        start_info = original_time_input.get("start", {})
+        start_str = start_info.get("dateTime") or start_info.get("date")
+        if not start_str:
+            return {"error": "original_time_input missing start time"}
+
+        try:
+            if start_info.get("dateTime"):
+                start_dt = date_parser.isoparse(start_str)
+                time_specific = True
+            else:
+                start_dt = datetime.datetime.fromisoformat(start_str)
+                start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+                time_specific = False
+        except Exception as exc:
+            return {"error": f"Could not interpret original_time_input: {exc}"}
+
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=tzinfo)
+        target_start = start_dt.astimezone(tzinfo)
+
+    elif isinstance(original_time_input, str):
+        time_specific = _looks_time_specific(original_time_input)
+        normalized = normalise_time_input(original_time_input, tz, slot_duration)
+        if "error" in normalized:
+            return normalized
+
+        start_str = normalized.get("start", {}).get("dateTime") or normalized.get("start", {}).get("date")
+        if not start_str:
+            return {"error": "Could not determine appointment start from input"}
+
+        try:
+            if normalized.get("start", {}).get("dateTime"):
+                start_dt = date_parser.isoparse(start_str)
+            else:
+                start_dt = datetime.datetime.fromisoformat(start_str)
+                start_dt = start_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+        except Exception as exc:
+            return {"error": f"Could not parse appointment reference time: {exc}"}
+
+        if start_dt.tzinfo is None:
+            start_dt = start_dt.replace(tzinfo=tzinfo)
+        target_start = start_dt.astimezone(tzinfo)
+
+    else:
+        return {"error": "original_time_input must be str or dict"}
+
+    # Build search window
+    if time_specific:
+        margin_minutes = max(slot_duration, 15)
+        window_start = target_start - datetime.timedelta(minutes=margin_minutes)
+        window_end = target_start + datetime.timedelta(minutes=margin_minutes)
+    else:
+        window_start = target_start.replace(hour=0, minute=0, second=0, microsecond=0)
+        window_end = window_start + datetime.timedelta(days=1)
+
+    return {
+        "target_start": target_start,
+        "window_start": window_start,
+        "window_end": window_end,
+        "time_specific": time_specific
+    }
+
+
+def _event_matches_name(event: Dict, normalized_name: str) -> bool:
+    """Check if the provided name appears in the event summary, description, or attendees."""
+    if not normalized_name:
+        return False
+
+    candidate_fields = [
+        event.get("summary"),
+        event.get("description")
+    ]
+
+    for field in candidate_fields:
+        if normalized_name in _normalize_text_for_match(field):
+            return True
+
+    for attendee in event.get("attendees", []):
+        if normalized_name in _normalize_text_for_match(attendee.get("displayName")):
+            return True
+
+    return False
+
+
+def _spell_name_for_confirmation(name: str) -> str:
+    """Return a string spelling the name for spoken confirmation."""
+    parts = []
+    for segment in name.split():
+        letters = [ch.upper() for ch in segment if ch.isalpha()]
+        if letters:
+            parts.append("-".join(letters))
+    return " / ".join(parts)
+
+
+def _format_time_for_speech(dt: datetime.datetime) -> str:
+    """Format datetime into a conversational time string."""
+    return dt.strftime("%I:%M %p").lstrip("0").replace(" 0", " ")
 
 
 # ---------------- Agent functions ---------------- #
@@ -588,6 +737,180 @@ async def create_appointment(params):
         return {"error": f"Error creating appointment: {str(e)}"}
 
 
+async def cancel_or_reschedule_appointment(params):
+    """Cancel an existing appointment and optionally book a new slot."""
+
+    clinic_data = params.get("_clinic_data")
+    if not clinic_data:
+        error_msg = "CRITICAL: Clinic data not available in cache - check main.py initialization"
+        print(error_msg)
+        return {"error": error_msg}
+
+    action = (params.get("action") or "cancel").lower()
+    new_time_input = params.get("new_time_input")
+    if new_time_input and action == "cancel":
+        action = "reschedule"
+
+    if action not in {"cancel", "reschedule"}:
+        return {"error": "action must be either 'cancel' or 'reschedule'"}
+
+    customer_name = params.get("customer_name") or params.get("name")
+    if not customer_name:
+        return {"error": "customer_name is required"}
+
+    original_time_input = params.get("original_time_input") or params.get("time_input")
+    if not original_time_input:
+        return {"error": "original_time_input is required"}
+
+    slot_duration = clinic_data["slot_duration_minutes"]
+    tz = clinic_data["timezone"]
+    calendar_id = clinic_data["calendar_id"]
+
+    search_window = _build_search_window(original_time_input, tz, slot_duration)
+    if "error" in search_window:
+        return search_window
+
+    service = get_service()
+
+    window_start_iso = search_window["window_start"].astimezone(ZoneInfo(tz)).isoformat()
+    window_end_iso = search_window["window_end"].astimezone(ZoneInfo(tz)).isoformat()
+
+    events: List[Dict] = []
+    page_token = None
+    while True:
+        try:
+            response = service.events().list(
+                calendarId=calendar_id,
+                timeMin=window_start_iso,
+                timeMax=window_end_iso,
+                singleEvents=True,
+                orderBy="startTime",
+                pageToken=page_token
+            ).execute()
+        except Exception as exc:
+            return {"error": f"Error looking up existing appointment: {exc}"}
+
+        events.extend(response.get("items", []))
+        page_token = response.get("nextPageToken")
+        if not page_token:
+            break
+
+    normalized_name = _normalize_text_for_match(customer_name)
+    matches: List[Tuple[Dict, datetime.datetime]] = []
+    for event in events:
+        if not _event_matches_name(event, normalized_name):
+            continue
+
+        event_start = _get_event_start_datetime(event, tz)
+        if not event_start:
+            continue
+
+        if search_window["time_specific"]:
+            diff = abs((event_start - search_window["target_start"]).total_seconds())
+            if diff > max(slot_duration, 15) * 60:
+                continue
+        else:
+            if event_start.date() != search_window["target_start"].date():
+                continue
+
+        matches.append((event, event_start))
+
+    if not matches:
+        friendly_date = search_window["target_start"].strftime("%A, %B %d")
+        return {
+            "status": "not_found",
+            "message": f"Could not locate an appointment for {customer_name} on {friendly_date}",
+            "spelled_name": _spell_name_for_confirmation(customer_name)
+        }
+
+    if len(matches) > 1 and not search_window["time_specific"]:
+        friendly_date = search_window["target_start"].strftime("%A, %B %d")
+        options = []
+        for event, start_dt in matches:
+            options.append({
+                "event_id": event.get("id"),
+                "summary": event.get("summary"),
+                "start": event.get("start"),
+                "link": event.get("htmlLink"),
+                "spoken_time": _format_time_for_speech(start_dt)
+            })
+        spoken_times_list = [option["spoken_time"] for option in options]
+        if len(spoken_times_list) > 1:
+            times_prefix = ", ".join(spoken_times_list[:-1])
+            spoken_times = f"{times_prefix}, and {spoken_times_list[-1]}"
+        else:
+            spoken_times = spoken_times_list[0]
+        return {
+            "status": "needs_selection",
+            "message": f"I can see {customer_name} is booked on {friendly_date} at {spoken_times}. Which one should I cancel or reschedule?",
+            "matches": options,
+            "spelled_name": _spell_name_for_confirmation(customer_name)
+        }
+
+    matches.sort(key=lambda item: abs((item[1] - search_window["target_start"]).total_seconds()))
+    target_event, target_start = matches[0]
+
+    cancelled_event_info = {
+        "event_id": target_event.get("id"),
+        "summary": target_event.get("summary"),
+        "start": target_event.get("start"),
+        "end": target_event.get("end"),
+        "htmlLink": target_event.get("htmlLink"),
+    }
+
+    try:
+        service.events().delete(calendarId=calendar_id, eventId=target_event["id"]).execute()
+    except Exception as exc:
+        return {"error": f"Error cancelling appointment: {exc}"}
+
+    if action == "cancel":
+        return {
+            "status": "cancelled",
+            "message": f"Cancelled appointment for {customer_name}. Would they like to reschedule or book another time with us?",
+            "cancelled_event": cancelled_event_info,
+            "spelled_name": _spell_name_for_confirmation(customer_name)
+        }
+
+    # Action is reschedule
+    base_response = {
+        "cancelled_event": cancelled_event_info,
+        "original_start": target_start.isoformat(),
+        "spelled_name": _spell_name_for_confirmation(customer_name)
+    }
+
+    if not new_time_input:
+        base_response.update({
+            "status": "cancelled_pending_reschedule",
+            "message": f"Cancelled appointment for {customer_name}. Ask if they'd like to reschedule or book another time.",
+        })
+        return base_response
+
+    # Reuse create_appointment for booking the new time
+    new_params = dict(params)
+    new_params["time_input"] = new_time_input
+    new_params["name"] = customer_name
+    new_params["_clinic_data"] = clinic_data
+    new_params.pop("original_time_input", None)
+
+    reschedule_result = await create_appointment(new_params)
+
+    if reschedule_result.get("status") == "created":
+        base_response.update({
+            "status": "rescheduled",
+            "message": f"Rescheduled appointment for {customer_name}.",
+            "new_event": reschedule_result.get("event"),
+            "appointment_details": reschedule_result.get("appointment_details")
+        })
+    else:
+        base_response.update({
+            "status": "cancelled_pending_reschedule",
+            "message": f"Cancelled appointment for {customer_name}, but could not book the new time.",
+            "reschedule_error": reschedule_result
+        })
+
+    return base_response
+
+
 async def get_clinic_hours(params):
     """Return formatted clinic operating hours for specified date using cached data."""
     
@@ -674,5 +997,6 @@ FUNCTION_MAP = {
     "check_availability": check_availability,
     "create_appointment": create_appointment,
     "get_available_slots": get_available_slots,
+    "cancel_or_reschedule_appointment": cancel_or_reschedule_appointment,
     "get_clinic_hours": get_clinic_hours,
 }
