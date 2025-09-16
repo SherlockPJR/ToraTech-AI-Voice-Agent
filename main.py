@@ -72,7 +72,7 @@ def load_dynamic_config(caller_phone: str, called_phone: str) -> dict:
             clinic_name = clinic_data.get('clinic_name', 'Our Clinic')
             clinic_address = clinic_data.get('address', 'Your Area')
             clinic_phone = clinic_data.get('phone_number', 'Our Main Number')
-            business_name = clinic_data.get('business_name')
+            business_name = clinic_data.get('business_name') or clinic_name
             
             # Parse location from address (extract city, state if possible)
             clinic_location = clinic_address
@@ -83,6 +83,11 @@ def load_dynamic_config(caller_phone: str, called_phone: str) -> dict:
                     # Assume format like "123 Main St, Gadsden, AL 35901"
                     # Take the last 2 parts as "City, State"
                     clinic_location = ', '.join(address_parts[-2:]).strip()
+        
+        # Handle prompt format conversion (array to string if needed)
+        if isinstance(config_template["agent"]["think"]["prompt"], list):
+            # Convert array format to single string by joining with newlines
+            config_template["agent"]["think"]["prompt"] = "\n".join(config_template["agent"]["think"]["prompt"])
         
         # Convert config to JSON string for variable substitution
         config_str = json.dumps(config_template, indent=2)
