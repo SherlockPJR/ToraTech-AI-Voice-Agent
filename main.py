@@ -836,19 +836,9 @@ def validate_config_template():
         return False
 
 async def handle_health_check(path, request_headers):
-    # Check if this is a health check (no Upgrade header = regular HTTP request)
-    upgrade_header = request_headers.get("Upgrade", "").lower()
-    
-    if upgrade_header != "websocket":
-        # This is a health check, not a WebSocket connection
-        headers = [
-            ("Content-Type", "text/plain"),
-            ("Content-Length", "2")
-        ]
-        body = b"OK"
-        return (200, headers, body)
-    
-    # This is a WebSocket upgrade request, let it proceed normally
+    # If path is for health check, respond
+    if path in ['/', '/health']:
+        return (200, [("Content-Type", "text/plain")], b"OK")
     return None
 
 async def main():
