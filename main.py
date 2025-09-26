@@ -835,6 +835,14 @@ def validate_config_template():
         logger.error(f"Unexpected error validating config_template.json: {e}")
         return False
 
+async def handle_health_check(path, request_headers):
+    method = request_headers.get("Method", "GET")  # websockets exposes the method header
+    if method in {"HEAD", "GET"}:
+        headers = [("Content-Type", "text/plain"), ("Content-Length", "2")]
+        body = b"OK" if method == "GET" else b""
+        return 200, headers, body
+    return 405, [("Content-Type", "text/plain")], b"Method Not Allowed"
+
 async def main():
     """Start WebSocket server to receive Twilio connections."""
     logger.info("Starting Voice Agent Server")
@@ -859,8 +867,8 @@ async def main():
     
     try:
         port = int(os.environ.get("PORT", "5000"))
-        await websockets.serve(twilio_handler, "0.0.0.0", port)
-        logger.info("Server started on localhost:5000")
+        await websockets.serve(twilio_handler, "0.0.0.0", port, process_request=handle_health_check)
+        logger.info("Server started on 0.0.0.0:{port}")
         logger.info("Conversation logs will be saved to: conversations.json")
         logger.info("Performance logs will be saved to: performance.json")
         logger.info("System logs will be saved to: voice_agent.log")
