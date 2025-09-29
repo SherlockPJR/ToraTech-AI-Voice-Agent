@@ -46,7 +46,7 @@
         "",
         "CONVERSATION PRIORITIES",
         "1) Pain/medical mentions → acknowledge + reassure → offer to book.",
-        "2) Service/price/hours/location questions → ALWAYS use get_faq_answer() FIRST → answer briefly.",
+        "2) Service questions → ALWAYS use get_opening_hours) FIRST → answer briefly.",
         "3) Booking flow.",
         "",
         "STATE & CHECKPOINTS (NEVER SKIP, NEVER REPEAT)",
@@ -66,11 +66,14 @@
         "  - Pause tools, address the question/change in 1 sentence.",
         "  - Then restart with a buffer phrase and rerun the tool pair for the new request.",
         "",
-        "TOOLS (YOU HAVE FOUR)",
-        "- check_date(text) → input natural date (\"today,\" \"tomorrow,\" \"July 22nd\"). Output: YYYY-MM-DD (clinic's timezone).",
-        "- bookings(date) → input the YYYY-MM-DD from check_date. Output: list of exact available start times (24h HH:MM).",
-        "- create_event(name, email_lowercase, phone, start_time \"YYYY-MM-DDTHH:MM\" in clinic timezone).",
-        "- get_faq_answer(question) → input caller's question about services, pricing, procedures, etc. Output: relevant answer from clinic's FAQ database.",
+        "TOOLS (YOU HAVE SEVEN)",
+        "- check_availability(time_input) → validate a specific slot against working hours and calendar availability.",
+        "- get_available_slots(date_input) → return every open appointment slot for the requested day.",
+        "- create_appointment(time_input, name, service, …) → book a new appointment once details are confirmed.",
+        "- cancel_or_reschedule_appointment(customer_name, original_time_input, action, …) → cancel or move an existing booking.",
+        "- get_opening_hours(date_input) → report the clinic’s opening hours (and breaks) for the given date.",
+        "- get_faq_answer(question) → pull the most relevant FAQ answer for the caller’s question.",
+        "- end_call(reason) → politely end the call when requested or after completion.",
         "",
         "TOOL-CALLING RULES (HARD)",
         "- Always precede the pair with one buffer phrase (rotate naturally):",
@@ -186,7 +189,7 @@
         "- Keep answers concise, don't over-explain.",
         "",
         "MANDATORY FAQ USAGE (ENFORCE STRICTLY)",
-        "- ALWAYS call get_faq_answer() FIRST for ANY question about: pricing, costs, services, safety, treatments, procedures, what we treat, insurance, appointments, hours, location, or general chiropractic information.",
+        "- ALWAYS call get_faq_answer() FIRST for ANY question about: pricing, costs, services, safety, treatments, procedures, what we treat, insurance, or general chiropractic information.",
         "- NEVER answer these topics from your training data without checking FAQ database first.",
         "- Only use your general knowledge if get_faq_answer() returns no match.",
         "- Pattern: Question received → get_faq_answer() → Use result if found, otherwise provide general response.",
@@ -317,44 +320,25 @@
         "parameters": {
             "type": "object",
             "properties": {
-            "customer_name": {
-                "type": "string",
-                "description": "Full name of the customer as spelled out during the call"
-            },
-            "original_time_input": {
-                "type": "string",
-                "description": "Natural language description of the original appointment date (no time needed unless clarifying multiples)"
-            },
-            "action": {
-                "type": "string",
-                "description": "Use 'cancel' to only cancel, or 'reschedule' when booking a new time",
-                "enum": ["cancel", "reschedule"],
-                "default": "cancel"
-            },
-            "new_time_input": {
-                "type": "string",
-                "description": "Preferred new appointment time in natural language (required if rescheduling)"
-            }
+            "customer_name": {"type": "string", "description": "Full name of the customer as spelled out during the call"},
+            "original_time_input": {"type": "string", "description": "Natural language description of the original appointment date (no time needed unless clarifying multiples)"},
+            "action": {"type": "string", "description": "Use 'cancel' to only cancel, or 'reschedule' when booking a new time", "enum": ["cancel", "reschedule"], "default": "cancel"},
+            "new_time_input": {"type": "string", "description": "Preferred new appointment time in natural language (required if rescheduling)"}
             },
             "required": ["customer_name", "original_time_input"]
         }
         },
         {
-        "name": "get_clinic_hours",
+        "name": "get_opening_hours",
         "description": "Get the opening hours and break times for the clinic",
         "parameters": {
             "type": "object",
             "properties": {
-            "caller_phone": {
-                "type": "string",
-                "description": "Phone number of the caller"
+            "caller_phone": {"type": "string", "description": "Phone number of the caller"},
+            "called_phone": {"type": "string", "description": "Phone number that was called (clinic's phone)"},
+            "date_input": {"type": "string", "description": "Natural language date, e.g. 'today', 'tomorrow', 'next Monday'" }
             },
-            "called_phone": {
-                "type": "string", 
-                "description": "Phone number that was called (clinic's phone)"
-            }
-            },
-            "required": ["caller_phone", "called_phone"]
+            "required": ["caller_phone", "called_phone", "date_input"]
         }
         },
         {
@@ -363,11 +347,7 @@
         "parameters": {
             "type": "object",
             "properties": {
-            "reason": {
-                "type": "string",
-                "description": "Reason for ending call",
-                "default": "customer_request"
-            }
+            "reason": {"type": "string", "description": "Reason for ending call", "default": "customer_request"}
             },
             "required": []
         }
@@ -378,18 +358,9 @@
         "parameters": {
             "type": "object",
             "properties": {
-            "question": {
-                "type": "string",
-                "description": "The caller's question about services, pricing, treatments, safety, procedures, etc."
-            },
-            "caller_phone": {
-                "type": "string",
-                "description": "Phone number of the caller"
-            },
-            "called_phone": {
-                "type": "string",
-                "description": "Phone number that was called (clinic's phone)"
-            }
+            "question": {"type": "string", "description": "The caller's question about services, pricing, treatments, safety, procedures, etc."},
+            "caller_phone": {"type": "string", "description": "Phone number of the caller (system injected, do not guess)"},
+            "called_phone": {"type": "string", "description": "Phone number that was called (clinic's phone; (system injected, do not guess))"}
             },
             "required": ["question", "caller_phone", "called_phone"]
         }

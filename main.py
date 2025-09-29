@@ -894,7 +894,7 @@ def create_app() -> web.Application:
         return app
 
     logger.info("Starting Voice Agent Server")
-    logger.info("=" * 50)
+    logger.info("-" * 50)
     logger.info("Features enabled:")
     logger.info("- Structured conversation logging")
     logger.info("- Performance metrics tracking")
@@ -905,7 +905,7 @@ def create_app() -> web.Application:
     logger.info("- Concise responses (50-80 chars)")
     logger.info("- Call termination support")
     logger.info("- Dynamic clinic configuration (config_template.json)")
-    logger.info("=" * 50)
+    logger.info("-" * 50)
 
     app = web.Application()
     # Health endpoints (GET and HEAD are both supported by aiohttp for GET routes)
