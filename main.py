@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from dotenv import load_dotenv
 import uuid
+from aiohttp import web, WSMsgType
 from functions_google_calendar import FUNCTION_MAP
 from functions_faq import get_faq_answer
 from clinic_cache import clinic_cache, customer_cache
@@ -841,20 +842,63 @@ async def handle_health_check(path, request_headers):
         return (200, [("Content-Type", "text/plain")], b"OK")
     return None
 
-async def main():
-    """Start WebSocket server to receive Twilio connections."""
-    logger.info("Starting Voice Agent Server")
-    logger.info("=" * 50)
-    
+class AiohttpWSCompat:
+    """Compatibility wrapper to adapt aiohttp WebSocketResponse to the
+    interface used by the existing Twilio websocket code (send/recv and async iteration)."""
+
+    def __init__(self, ws: web.WebSocketResponse):
+        self.ws = ws
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        msg = await self.ws.receive()
+        if msg.type == WSMsgType.TEXT:
+            return msg.data
+        if msg.type == WSMsgType.BINARY:
+            return msg.data
+        raise StopAsyncIteration
+
+    async def send(self, data):
+        if isinstance(data, (bytes, bytearray)):
+            await self.ws.send_bytes(data)
+        else:
+            await self.ws.send_str(str(data))
+
+    async def close(self):
+        await self.ws.close()
+
+
+async def http_health_handler(request: web.Request) -> web.Response:
+    return web.Response(text="OK", content_type="text/plain")
+
+
+async def http_ws_entrypoint(request: web.Request) -> web.StreamResponse:
+    ws = web.WebSocketResponse(heartbeat=20)
+    await ws.prepare(request)
+    # Reuse existing Twilio handler by wrapping the aiohttp ws
+    wrapped = AiohttpWSCompat(ws)
+    await twilio_handler(wrapped)
+    return ws
+
+
+def create_app() -> web.Application:
     # Validate configuration template before starting
     if not validate_config_template():
         logger.error("Configuration validation failed. Cannot start server.")
-        return
-    
+        # Create app that still serves health so Render can show logs
+        app = web.Application()
+        app.router.add_get("/", http_health_handler)
+        app.router.add_get("/health", http_health_handler)
+        return app
+
+    logger.info("Starting Voice Agent Server")
+    logger.info("=" * 50)
     logger.info("Features enabled:")
     logger.info("- Structured conversation logging")
     logger.info("- Performance metrics tracking")
-    logger.info("- Error handling")  
+    logger.info("- Error handling")
     logger.info("- Function execution timing")
     logger.info("- Connection monitoring")
     logger.info("- Improved barge-in handling")
@@ -862,18 +906,26 @@ async def main():
     logger.info("- Call termination support")
     logger.info("- Dynamic clinic configuration (config_template.json)")
     logger.info("=" * 50)
-    
-    try:
-        port = int(os.environ.get("PORT", "5000"))
-        await websockets.serve(twilio_handler, "0.0.0.0", port, process_request=handle_health_check)
-        logger.info("Server started on 0.0.0.0:{port}")
-        logger.info("Conversation logs will be saved to: conversations.json")
-        logger.info("Performance logs will be saved to: performance.json")
-        logger.info("System logs will be saved to: voice_agent.log")
-        logger.info(f"Performance logging: {'ENABLED' if performance_logger.enabled else 'DISABLED'}")
-        await asyncio.Future()  # Run forever
-    except Exception as e:
-        logger.error(f"Server error: {e}")
+
+    app = web.Application()
+    # Health endpoints (GET and HEAD are both supported by aiohttp for GET routes)
+    app.router.add_get("/", http_health_handler)
+    app.router.add_get("/health", http_health_handler)
+    # WebSocket endpoint for Twilio to connect
+    app.router.add_get("/ws", http_ws_entrypoint)
+    return app
+
+
+def main():
+    port = int(os.environ.get("PORT", "5000"))
+    app = create_app()
+    logger.info(f"Server started on 0.0.0.0:{port}")
+    logger.info("Conversation logs will be saved to: conversations.json")
+    logger.info("Performance logs will be saved to: performance.json")
+    logger.info("System logs will be saved to: voice_agent.log")
+    logger.info(f"Performance logging: {'ENABLED' if performance_logger.enabled else 'DISABLED'}")
+    web.run_app(app, host="0.0.0.0", port=port)
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
